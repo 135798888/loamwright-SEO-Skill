@@ -427,27 +427,6 @@ class WPClient:
         except Exception as e:
             info["wp_error"] = str(e)
 
-        # SEOPress bridge probe (install/wordpress-mu-plugin/xuanran-seopress-rest-bridge.php)
-        seopress_bridge_ok = False
-        seopress_v = None
-        try:
-            r = self.get("/xuanran/v1/seopress-bridge")
-            if r.json_data and r.json_data.get("bridge_active"):
-                seopress_bridge_ok = bool(r.json_data.get("seopress_active", True))
-                seopress_v = r.json_data.get("seopress_version")
-                if seopress_bridge_ok and seo_plugin is None:
-                    seo_plugin = "seopress"
-                if not r.json_data.get("seopress_active", True):
-                    info["seopress_bridge_error"] = "bridge installed but SEOPress is not active"
-        except WPNotFoundError:
-            info["seopress_bridge_error"] = (
-                "MU-plugin not installed. Install "
-                "install/wordpress-mu-plugin/xuanran-seopress-rest-bridge.php "
-                "to wp-content/mu-plugins/"
-            )
-        except Exception as e:
-            info["seopress_bridge_error"] = str(e)
-
         # Yoast MU-plugin probe
         try:
             r = self.get("/yoast/v1/ping")
@@ -483,8 +462,6 @@ class WPClient:
             "yoast_version": yoast_v,
             "rankmath_bridge": rankmath_bridge_ok,
             "rankmath_version": rankmath_v,
-            "seopress_bridge": seopress_bridge_ok,
-            "seopress_version": seopress_v,
             "info": info,
         }
 

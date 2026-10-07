@@ -14,9 +14,9 @@
 | `hermes_adapter/agent.py` + `tools.py` | 用中转站模型跑 `agents/*.md` 里的每个子 agent，**只给它定义里声明的工具**（写手只有 Read/Write，不能联网），写 JSON 时自动做 schema 校验，跑命令前做成本检查 |
 | `hermes_adapter/run_article.py` | 命令行入口（Hermes / cron 调这个） |
 | `hermes_adapter/bootstrap_project.py` + `templates/clawclipfactory/` | 用"填表"代替交互式 `/init`，工厂事实只能来自你填的内容 |
-| SEOPress 适配 | 新增 MU 插件 `install/wordpress-mu-plugin/xuanran-seopress-rest-bridge.php`；`wp_publisher` 写 SEOPress 字段并回读校验；`verify_post` 的草稿检查支持 SEOPress |
+| SEOPress 适配 | 新增 `scripts/wordpress/seopress_api.py`，直接调用 SEOPress 自带的 REST API 写入并回读；`verify_post` 的草稿检查改为通过同一接口读取（原版只认 RankMath，SEOPress 草稿会永远校验失败） |
 | `hermes_adapter/hermes/seo-article/SKILL.md` | 给 Hermes 用的技能说明 |
-| `tests/` | 22 个离线测试（含真实编排器的全链路测试），不花钱 |
+| `tests/` | 28 个离线测试（含真实编排器的全链路测试），不花钱 |
 
 ---
 
@@ -30,7 +30,7 @@ git clone https://github.com/135798888/loamwright-SEO-Skill.git loamwright-seo-s
 cd loamwright-seo-skill
 python3 -m venv .venv && source .venv/bin/activate
 pip install -r requirements.txt
-python -m pytest tests/ -q        # 应显示 22 passed
+python -m pytest tests/ -q        # 应显示 28 passed
 ```
 
 > 以后每次更新：`cd ~/loamwright-seo-skill && git pull`
@@ -92,15 +92,11 @@ EOF
 chmod 600 ~/.xuanran-seo/credentials/wordpress/clawclipfactory.json
 ```
 
-## 第 4 步：WordPress 装 SEOPress 桥接插件
+## 第 4 步：确认 SEOPress 接口可用（不用装插件）
 
-把 `install/wordpress-mu-plugin/xuanran-seopress-rest-bridge.php` 上传到网站的
-`wp-content/mu-plugins/` 目录（没有这个目录就新建）。MU 插件不用启用，上传即生效。
+SEOPress 免费版自带 REST API，流水线直接用你的应用密码调用它写入 SEO 标题、描述、关键词和 robots。网站上不需要额外装任何东西。
 
-验证：浏览器打开 `https://clawclipfactory.com/wp-json/xuanran/v1/seopress-bridge`，看到
-`"bridge_active": true` 和 `"seopress_active": true` 就对了。
-
-> 没装这个插件，文章还是能发成草稿，但 SEO 标题、描述、关键词写不进 SEOPress，流水线最后的线上校验会失败。
+只需确认两点：SEOPress 已启用；应用密码对应的 WordPress 用户是"编辑"或"管理员"。第 5 步的 `--check-wp` 会自动检查这两项。
 
 ## 第 5 步：填工厂资料并初始化项目
 
@@ -112,7 +108,7 @@ chmod 600 ~/.xuanran-seo/credentials/wordpress/clawclipfactory.json
 python -m hermes_adapter.bootstrap_project --from hermes_adapter/templates/clawclipfactory --check-wp
 ```
 
-返回 `"ok": true` 且 `seopress_bridge: true` 就好了。还有 TODO 没填，它会列出来并拒绝安装。
+返回 `"ok": true` 且 `seo_plugin: "seopress"` 就好了。还有 TODO 没填，它会列出来并拒绝安装。
 
 ## 第 6 步：手动试跑一篇（第一次建议盯着看）
 
