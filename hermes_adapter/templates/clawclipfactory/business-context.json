@@ -1,0 +1,94 @@
+{
+  "site_slug": "clawclipfactory",
+  "site_url": "https://clawclipfactory.com",
+  "industry": {
+    "primary": "Claw clip / shark clip manufacturing (OEM & ODM)",
+    "secondary": "Plastic injection molding for hair accessories"
+  },
+  "usage_type": "b2b_manufacturer",
+  "location": {
+    "country": "CN",
+    "languages": ["en"],
+    "local_seo_mode": "off",
+    "service_areas": { "type": "global" }
+  },
+  "voice_default": { "pair": "professional × technical" },
+  "publish_policy": { "default": "draft" },
+
+  "citation_source_policy": {
+    "enforcement": "hard_veto",
+    "exclude_competitor_domains": true,
+    "scope": ["in_text_citations", "references", "outbound_links", "schema_citation"],
+    "do_not_cite_domains": [
+      "canyuandesign.com",
+      "hairclipsupplier.com",
+      "yiyiaccessory.com"
+    ],
+    "allow_brand_mention_in_prose": false,
+    "sole_source_behavior": "research_replacement"
+  },
+
+  "company": {
+    "legal_name": "Quzhou Jiahe Plastic Products Co., Ltd.",
+    "brand_name": "TODO: the brand name buyers see on the site",
+    "years_operating": "TODO: integer, e.g. 11 — resolve the 2008 vs 2014 founding-year conflict first",
+    "factory_facts": {
+      "location": "Quzhou, Zhejiang, China",
+      "core_process": "Plastic injection molding + in-house assembly and packaging",
+      "materials": "TODO: e.g. PC, ABS, acetate (cellulose acetate), PETG — only what you really run",
+      "moq": "TODO: e.g. 1,000 pcs per design/color",
+      "sample_lead_time": "TODO: e.g. 5-7 days for stock designs",
+      "mold_lead_time": "TODO: e.g. 20-25 days for a new mold",
+      "bulk_lead_time": "TODO: e.g. 25-35 days after sample approval",
+      "monthly_capacity": "TODO: e.g. 500,000 pcs",
+      "customization": "TODO: e.g. custom color (Pantone), logo, packaging, new mold",
+      "quality_control": "TODO: e.g. spring-tension test, drop test, AQL 2.5 final inspection",
+      "certifications_and_tests": "TODO: only real ones, e.g. BSCI audit, REACH / CPSIA test reports",
+      "export_markets": "North America, Europe, Australia",
+      "packaging_options": "TODO: e.g. OPP bag, hang card, gift box"
+    },
+    "proof_points": []
+  },
+
+  "conversion_offers": {
+    "business_model": "b2b_services",
+    "services": [
+      {
+        "slug": "oem-custom",
+        "url": "https://clawclipfactory.com/oem-custom/",
+        "positioning": "Custom claw clip manufacturing: your design, colors, logo and packaging, made in our own injection-molding factory.",
+        "persona": "Brand owners, importers and wholesalers sourcing private-label claw clips",
+        "distinct_value_prop": "Factory-direct pricing with in-house molds, samples before bulk, and export-ready packaging",
+        "own_page_cta_copy": "Get a Quote"
+      }
+    ],
+    "fallback_url": "https://clawclipfactory.com/contact/",
+    "constraints": {
+      "no_person_blocks": true,
+      "tone": "B2B, factual, no hype, no fake urgency",
+      "banned_phrases": ["best in the world", "No.1", "cheapest"]
+    }
+  },
+
+  "cta": {
+    "enabled": true,
+    "placements": ["mid", "end"],
+    "heading": "Talk to the factory",
+    "target_url": "https://clawclipfactory.com/oem-custom/"
+  },
+
+  "article_signature": {
+    "author": "TODO: e.g. the Jiahe production & export team",
+    "contact_url": "https://clawclipfactory.com/contact/",
+    "cta_clause": "Need custom claw clips? Send us your design or reference photos for a quote."
+  },
+
+  "wordpress": {
+    "default_categories": ["TODO: your existing blog category name, e.g. Blog"],
+    "seo_plugin": "seopress",
+    "seo_plugin_schema_provided": []
+  },
+
+  "featured_image_inline_policy": { "mode": "no_inline" },
+  "image_pipeline_policy": { "mode": "realtime" }
+}

@@ -1,0 +1,17 @@
+# Image art direction for AI-generated article images (read by the image-prompt-designer agent).
+# B2B manufacturer: images must look like a real factory / real product, never a lifestyle ad.
+visual_style: >-
+  Clean, natural-light product and factory photography. Neutral off-white and warm grey
+  backgrounds (#f8f6f3), muted gold-copper accents (#b39a7c). Documentary, not glossy advertising.
+art_direction_prefix: >-
+  Realistic photograph, natural soft daylight, neutral off-white background, true-to-life plastic
+  and acetate textures, sharp focus on the hair claw clips, no text, no logos.
+realism: photographic
+featured_image:
+  text_overlay: false
+packaging_branding:
+  forbid_third_party_brands: true
+  label_text: ""
+negative_prompt_baseline: >-
+  text, watermark, logo, brand name, distorted clip hinges, extra teeth, melted plastic,
+  cartoon, illustration, 3D render look, people's faces in close-up, hands with extra fingers

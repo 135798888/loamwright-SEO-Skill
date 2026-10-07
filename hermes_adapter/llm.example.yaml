@@ -1,0 +1,55 @@
+# hermes_adapter LLM config — copy to ~/.xuanran-seo/llm.yaml and edit.
+#   mkdir -p ~/.xuanran-seo && cp hermes_adapter/llm.example.yaml ~/.xuanran-seo/llm.yaml
+#
+# Any OpenAI-compatible /v1/chat/completions endpoint works: the official API, OpenRouter,
+# or a relay (中转站). The model MUST support function calling (tools).
+
+base_url: https://your-relay.example.com/v1      # 中转站地址，通常以 /v1 结尾
+api_key_env: LW_LLM_API_KEY                       # read the key from this env var (recommended)
+# api_key: sk-...                                 # …or put it here (file stays outside the repo)
+
+timeout_seconds: 600
+max_output_tokens: 16000      # long sections + JSON artifacts need room; lower only if the relay rejects it
+vision: true                  # image-visual-qa needs to SEE images; set false if your model can't
+# temperature: 0.4            # omit to use the model default
+# extra_headers: {}           # some relays want e.g. {"X-Title": "seo"}
+
+# Model per role. Names are exactly what YOUR relay calls the model.
+# Roles = agent names in agents/*.md, plus "inline" (format-selector, outline-architect,
+# meta-builder, citation-capsule-builder) and "repair" (fixing failed gates).
+# Quality is decided mostly by: writer, fact-checker, humanizer, reviewer, outline (inline).
+models:
+  default: claude-sonnet-4-5          # everything without an override
+  writer: claude-opus-4-1             # writes each H2 section
+  fact-checker: claude-sonnet-4-5
+  humanizer: claude-opus-4-1
+  reviewer: claude-opus-4-1           # independent editor — use a strong model
+  inline: claude-sonnet-4-5
+  repair: claude-sonnet-4-5
+  # researcher: claude-sonnet-4-5
+  # image-visual-qa: gpt-4o           # must accept images
+
+# Per-stage overrides beat per-role (stage names from scripts/pipeline/orchestrator.py).
+stage_models:
+  # outline-architect: claude-opus-4-1
+
+# USD per 1M tokens [input, output] — used for the per-article budget and the cost ledger.
+# Fill in YOUR relay's prices; unpriced models count as $0 (and are flagged in the report).
+prices:
+  claude-sonnet-4-5: [3, 15]
+  claude-opus-4-1: [15, 75]
+
+limits:
+  max_llm_usd_per_article: 15     # hard stop for one article's LLM spend (images/Tavily excluded)
+  writer_parallelism: 4           # H2 sections written concurrently
+  max_turns_cap: 120              # ceiling on any single agent's tool-use turns
+  repair_rounds: 3                # repair attempts per failed gate before giving up
+  llm_stage_retries: 2            # re-dispatches when an LLM stage misses its outputs
+  context_char_budget: 600000     # old tool outputs are elided beyond this (~150k tokens)
+  tool_output_char_cap: 40000
+
+# Optional: Telegram report after each article (token can also come from env TG_BOT_TOKEN,
+# chat id from TG_CHAT_ID). If you let Hermes report instead, leave this out.
+# telegram:
+#   bot_token_env: TG_BOT_TOKEN
+#   chat_id: "123456789"

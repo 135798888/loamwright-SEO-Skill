@@ -708,6 +708,20 @@ def check_rankmath_meta(post: dict, expect_robots_index: bool = True, head_html:
             # Note: many SEO setups omit "index" word since it's the default;
             # only fail if explicit noindex is present.
         detail = f"rendered head check — {'; '.join(issues) if issues else 'title/canonical/description/robots all present'}"
+    elif any(str(k).startswith("_seopress_") for k in (post.get("meta") or {})):
+        # SEOPress site (keys exposed by xuanran-seopress-rest-bridge.php). SEOPress emits
+        # the canonical from the permalink when the field is empty, so it is not required;
+        # robots is inverted: "_seopress_robots_index" == "yes" means NOINDEX.
+        meta = post.get("meta", {})
+        if not meta.get("_seopress_titles_title"):
+            issues.append("_seopress_titles_title missing in REST meta")
+        if not meta.get("_seopress_titles_desc"):
+            issues.append("_seopress_titles_desc missing in REST meta")
+        if not meta.get("_seopress_analysis_target_kw"):
+            issues.append("_seopress_analysis_target_kw missing in REST meta")
+        if expect_robots_index and str(meta.get("_seopress_robots_index", "")).lower() == "yes":
+            issues.append("_seopress_robots_index is 'yes' (noindex) in REST meta")
+        detail = f"SEOPress REST meta check (no head fetched — draft post) — {'; '.join(issues) if issues else 'all set'}"
     else:
         # Fallback: legacy REST meta check
         meta = post.get("meta", {})
@@ -724,7 +738,7 @@ def check_rankmath_meta(post: dict, expect_robots_index: bool = True, head_html:
         detail = f"REST meta check (no head fetched — draft post) — {'; '.join(issues) if issues else 'all set'}"
     return CheckResult(
         id="07_rankmath_meta",
-        label="RankMath meta correctly emitted (rendered head: title + canonical + description + robots)",
+        label="SEO meta correctly emitted (rendered head, or RankMath/SEOPress REST meta for drafts)",
         passed=not issues,
         detail=detail,
     )
