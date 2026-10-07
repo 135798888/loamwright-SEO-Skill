@@ -136,14 +136,36 @@ python -m hermes_adapter.run_article --resume <任务ID>
 
 ## 第 7 步：接入 Hermes
 
-把技能复制到 Hermes 的技能目录（下面是默认路径，你的 Hermes 版本如果不同，以它的文档为准）：
+**7.1 让 Hermes 能读到 API 密钥。** Hermes 在后台执行命令时，通常不会加载 `~/.bashrc`，所以只设置 `export LW_LLM_API_KEY` 不一定生效。最稳妥的做法是把中转站的 key 直接写进 `~/.xuanran-seo/llm.yaml`（这个文件在仓库外，不会被提交）：
+
+```yaml
+api_key: sk-你的中转站key        # 写这一行，删掉或注释掉 api_key_env 那行
+```
+
+```bash
+chmod 600 ~/.xuanran-seo/llm.yaml
+```
+
+**7.2 安装技能。** Hermes 的自定义技能放在 `~/.hermes/skills/` 下，复制进去即可，不需要注册：
 
 ```bash
 mkdir -p ~/.hermes/skills
-cp -r hermes_adapter/hermes/seo-article ~/.hermes/skills/
+cp -r ~/loamwright-seo-skill/hermes_adapter/hermes/seo-article ~/.hermes/skills/
+hermes skills list | grep seo-article      # 能看到就说明装上了
 ```
 
-之后在 Telegram 里对 Hermes 说"写一篇关于 custom claw clips wholesale 的 SEO 文章"，它会在后台启动任务、过一会儿查看进度、最后把草稿链接发给你。
+技能只在**新会话**生效：在 Hermes 里新开对话，或发送 `/reset`。
+
+> 仓库以后 `git pull` 更新时，技能文件可能也有变化，再执行一次上面的 `cp` 即可。
+
+**7.3 使用。** 在 Telegram（或其他接入 Hermes 的地方）发：
+
+- `/seo-article 写一篇关于 custom claw clips wholesale 的文章`
+- 或直接说"帮我写一篇关于 acetate claw clips 的 SEO 文章"
+- "把 keywords.txt 里下一个关键词写了"
+- "刚才那篇文章跑得怎么样了？"
+
+Hermes 会在后台启动任务，过一段时间查看日志，跑完后把草稿链接、文章 ID 和花费告诉你。一篇大约 30–90 分钟，期间可以随时问进度。
 
 ## 第 8 步：定时自动跑（每天一篇）
 
@@ -151,7 +173,7 @@ cp -r hermes_adapter/hermes/seo-article ~/.hermes/skills/
 
 ```cron
 CRON_TZ=Asia/Shanghai
-0 9 * * * cd ~/loamwright-seo-skill && LW_LLM_API_KEY=你的key .venv/bin/python -m hermes_adapter.run_article --project clawclipfactory --queue keywords.txt >> logs/cron.log 2>&1
+0 9 * * * cd ~/loamwright-seo-skill && .venv/bin/python -m hermes_adapter.run_article --project clawclipfactory --queue keywords.txt >> logs/cron.log 2>&1
 ```
 
 - 每次只取一个关键词，跑完记到 `keywords.txt.done`（含状态和任务 ID）。
