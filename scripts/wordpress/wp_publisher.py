@@ -63,7 +63,8 @@ class PublishResult:
     featured_media_id: int | None = None
     yoast_set: bool = False
     rankmath_set: bool = False
-    seo_plugin_used: str | None = None    # "yoast" | "rankmath" | None
+    seopress_set: bool = False
+    seo_plugin_used: str | None = None    # "yoast" | "rankmath" | "seopress" | None
     duration_seconds: float = 0
     error: str | None = None
     rollback_attempted: bool = False
@@ -585,13 +586,23 @@ def publish(
             return _rollback(wp, result, slot_to_media, rollback_on_failure)
 
         # ── Step 7b: Set SEO meta (Yoast OR Rank Math) ─────
-        if h.get("yoast_mu_plugin"):
+        if h.get("seo_plugin") == "seopress" and h.get("seopress_bridge"):
+            _set_seopress_meta(wp, result.post_id, inp.meta, featured_id, result)
+        elif h.get("yoast_mu_plugin"):
             _set_yoast_meta(wp, result.post_id, inp.meta, result)
         elif h.get("rankmath_bridge"):
             _set_rankmath_meta(wp, result.post_id, inp.meta, featured_id, result)
         else:
-            # Neither MU-plugin installed — surface a clear warning
-            if h.get("seo_plugin") == "rankmath":
+            # No usable MU-plugin bridge installed — surface a clear warning
+            if h.get("seo_plugin") == "seopress":
+                print(
+                    "⚠ SEOPress detected but bridge MU-plugin not installed. "
+                    "SEO meta will be skipped. Install "
+                    "install/wordpress-mu-plugin/xuanran-seopress-rest-bridge.php "
+                    "to wp-content/mu-plugins/ on the target site.",
+                    file=sys.stderr,
+                )
+            elif h.get("seo_plugin") == "rankmath":
                 print(
                     "⚠ Rank Math detected but bridge MU-plugin not installed. "
                     "SEO meta will be skipped. Install "
@@ -775,6 +786,93 @@ def _set_yoast_meta(wp, post_id, meta: dict, result) -> None:
         result.seo_plugin_used = "yoast"
     except WPApiError as e:
         print(f"⚠ Yoast meta set failed (non-fatal): {e}", file=sys.stderr)
+
+
+def build_seopress_meta(meta: dict, featured_media_id: int | None = None) -> dict:
+    """Map the pipeline's FLAT meta.json onto SEOPress post-meta keys.
+
+    Pure function (tested in tests/test_seopress_publish.py). Keys are the ones
+    registered by install/wordpress-mu-plugin/xuanran-seopress-rest-bridge.php.
+
+    SEOPress robots semantics are INVERTED vs Rank Math: the flag stores "yes" to
+    ENABLE a restriction ("_seopress_robots_index": "yes" means noindex). Indexable
+    posts therefore get "" (SEOPress default), never "no".
+    """
+    out: dict = {}
+    title = meta.get("seo_title") or meta.get("title", "")
+    if title:
+        out["_seopress_titles_title"] = title
+    desc = meta.get("meta_description") or meta.get("excerpt", "")
+    if desc:
+        out["_seopress_titles_desc"] = desc
+    focus = meta.get("focus_keyphrase") or ""
+    if isinstance(focus, list):
+        focus = ", ".join(str(k) for k in focus if k)
+    if focus:
+        out["_seopress_analysis_target_kw"] = focus
+    if meta.get("canonical_url"):
+        out["_seopress_robots_canonical"] = meta["canonical_url"]
+    if meta.get("breadcrumb_title"):
+        out["_seopress_robots_breadcrumbs"] = meta["breadcrumb_title"]
+
+    robots = meta.get("robots")
+    if isinstance(robots, list) and robots:
+        flags = {
+            "noindex": "_seopress_robots_index",
+            "nofollow": "_seopress_robots_follow",
+            "noimageindex": "_seopress_robots_imageindex",
+            "noarchive": "_seopress_robots_archive",
+            "nosnippet": "_seopress_robots_snippet",
+        }
+        for directive, key in flags.items():
+            out[key] = "yes" if directive in robots else ""
+
+    if isinstance(meta.get("primary_category"), int):
+        out["_seopress_robots_primary_cat"] = str(meta["primary_category"])
+    elif isinstance(meta.get("category_ids"), list) and meta["category_ids"]:
+        out["_seopress_robots_primary_cat"] = str(meta["category_ids"][0])
+
+    if meta.get("og_title"):
+        out["_seopress_social_fb_title"] = meta["og_title"]
+    if meta.get("og_description"):
+        out["_seopress_social_fb_desc"] = meta["og_description"]
+    if meta.get("og_image"):
+        out["_seopress_social_fb_img"] = meta["og_image"]
+    elif featured_media_id:
+        out["_seopress_social_fb_img_attachment_id"] = str(featured_media_id)
+    if meta.get("twitter_title"):
+        out["_seopress_social_twitter_title"] = meta["twitter_title"]
+    if meta.get("twitter_description"):
+        out["_seopress_social_twitter_desc"] = meta["twitter_description"]
+    if meta.get("twitter_image"):
+        out["_seopress_social_twitter_img"] = meta["twitter_image"]
+    return out
+
+
+def _set_seopress_meta(wp, post_id, meta: dict, featured_media_id, result) -> None:
+    """Set SEOPress meta via core /wp/v2/posts/{id} `meta` (needs the SEOPress bridge MU-plugin).
+
+    Verified by READBACK (Rule 13: a 200 is not proof the value landed). Fields that do
+    not echo back are reported; verify_post check 07 then fails the draft on the missing
+    core fields, so a silent no-op cannot reach COMPLETE.
+    """
+    payload = build_seopress_meta(meta, featured_media_id)
+    if not payload:
+        return
+    try:
+        wp.post(f"/wp/v2/posts/{post_id}", json_body={"meta": payload})
+        r_verify = wp.get(f"/wp/v2/posts/{post_id}", params={"_fields": "meta", "context": "edit"})
+        saved = (r_verify.json_data or {}).get("meta", {}) or {}
+        wanted = {k: v for k, v in payload.items() if v not in ("", None)}
+        missing = [k for k, v in wanted.items() if str(saved.get(k, "")) != str(v)]
+        if missing:
+            print(f"⚠ SEOPress: {len(missing)} field(s) did not read back as written: {missing}",
+                  file=sys.stderr)
+        result.seopress_set = not missing
+        result.seo_plugin_used = "seopress"
+    except WPApiError as e:
+        print(f"⚠ SEOPress meta set failed (non-fatal here; verify-post will flag it): {e}",
+              file=sys.stderr)
 
 
 def _set_rankmath_meta(wp, post_id, meta: dict, featured_media_id, result) -> None:

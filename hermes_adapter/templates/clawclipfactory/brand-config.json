@@ -1,0 +1,14 @@
+{
+  "site_slug": "clawclipfactory",
+  "brand_name": "TODO: brand name",
+  "colors": {
+    "primary": "#1c1a17",
+    "secondary": "#f8f6f3",
+    "accent": "#b39a7c",
+    "surface_mode": "light"
+  },
+  "typography": {
+    "heading_font": "Cormorant Garamond",
+    "body_font": "DM Sans"
+  }
+}
