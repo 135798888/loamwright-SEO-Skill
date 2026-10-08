@@ -135,15 +135,32 @@ def _run_bash(command: str) -> subprocess.CompletedProcess:
                           capture_output=True, text=True)
 
 
-def _launch_background(command: str) -> None:
-    """Launch a BACKGROUND stage detached so it survives this driver process exiting."""
+def _launch_background(command: str, log_path: Path | None = None) -> None:
+    """Launch a BACKGROUND stage detached so it survives this driver process exiting.
+
+    With ``log_path`` the process's stdout/stderr go to that file and its pid to
+    ``<log_path minus .log>.pid`` — so a crashed background stage (which the JOIN
+    otherwise only sees as "output never appeared") leaves its traceback behind and
+    a caller can tell "still running" from "died".
+    """
     kwargs: dict = {"cwd": str(PLUGIN_ROOT), "shell": True,
                     "stdout": subprocess.DEVNULL, "stderr": subprocess.DEVNULL}
+    log_f = None
+    if log_path is not None:
+        log_f = open(log_path, "ab")  # noqa: SIM115 — handed to the child, closed below
+        kwargs["stdout"] = log_f
+        kwargs["stderr"] = subprocess.STDOUT
     if sys.platform == "win32":
         kwargs["creationflags"] = subprocess.CREATE_NEW_PROCESS_GROUP | 0x00000008  # DETACHED_PROCESS
     else:
         kwargs["start_new_session"] = True
-    subprocess.Popen(command, **kwargs)
+    try:
+        proc = subprocess.Popen(command, **kwargs)
+    finally:
+        if log_f is not None:
+            log_f.close()
+    if log_path is not None:
+        log_path.with_suffix(".pid").write_text(str(proc.pid), encoding="utf-8")
 
 
 def _gate_passed(ws: Path, stage_name: str) -> tuple[bool, str]:
@@ -252,7 +269,7 @@ def advance(task_id: str, completed_llm: str | None = None, max_bash: int = 60) 
             cmd = r.get("command")
             if not cmd:
                 return {"action": "ERROR", "stage": stage, "detail": "no command resolved"}
-            _launch_background(cmd)
+            _launch_background(cmd, log_path=ws / f"{stage}.background.log")
             v = orch.verify_stage(task_id, stage)  # records the launch
             steps.append({"stage": stage, "executor": "BACKGROUND", "launched": True})
             continue

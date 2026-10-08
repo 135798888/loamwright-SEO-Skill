@@ -19,7 +19,9 @@ Nothing here can mark a stage complete: only orchestrator.verify_stage() does th
 from __future__ import annotations
 
 import json
+import os
 import re
+import subprocess
 import time
 import traceback
 from collections import defaultdict
@@ -27,6 +29,7 @@ from collections.abc import Callable
 from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
+from pathlib import Path
 from typing import Any
 
 from hermes_adapter.agent import (
@@ -69,6 +72,38 @@ def environment_error(r: dict[str, Any]) -> str | None:
             line = next((ln for ln in text.splitlines() if m.group(0) in ln), m.group(0))
             return line.strip()[:400]
     return None
+
+
+_IMAGE_JOIN = "image-pipeline-join"
+_IMAGE_FORK_TIMEOUT_S = 45 * 60
+
+
+def fork_alive(ws: Any) -> bool:
+    """True only if the image fork launched for this workspace is still running.
+
+    No pid file (fork launched by a run that predates pid recording, or never
+    launched) counts as not running — the caller then re-runs the fork itself."""
+    pid_file = ws / "image-pipeline-fork.background.pid"
+    try:
+        pid = int(pid_file.read_text(encoding="utf-8").strip())
+    except (OSError, ValueError):
+        return False
+    try:
+        os.kill(pid, 0)
+    except ProcessLookupError:
+        return False
+    except PermissionError:
+        return True
+    except OSError:
+        return False
+    try:  # a zombie or a recycled pid is not our fork
+        stat = Path(f"/proc/{pid}/stat").read_text()
+        if stat.rsplit(")", 1)[-1].split()[0] == "Z":
+            return False
+        cmdline = Path(f"/proc/{pid}/cmdline").read_bytes().replace(b"\0", b" ")
+        return b"image_fork" in cmdline
+    except OSError:
+        return True  # no /proc (macOS/Windows): trust the signal check
 
 
 def _env_stop_message(stage: str | None, line: str) -> str:
@@ -129,6 +164,7 @@ class Driver:
         self.bash_errors: dict[str, int] = defaultdict(int)
         self.retry_notes: dict[str, str] = {}
         self.second_opinion_done = False
+        self.image_fork_reruns = 0
 
     # ── logging ─────────────────────────────────────────────────
     def event(self, kind: str, **data: Any) -> None:
@@ -200,6 +236,11 @@ class Driver:
                     if not self._handle_error(r):
                         return self._finish("failed", str(r.get("detail"))[:1500], stage)
                     continue
+
+                if action == "WAIT" and stage == _IMAGE_JOIN:
+                    stop = self._image_join_wait(r)
+                    if stop:
+                        return self._finish("failed", stop, stage)
 
                 if action in ("WAIT", "LOCKED"):
                     delay = 20 if action == "WAIT" else 15
@@ -473,6 +514,52 @@ Rules:
                         user_prompt=prompt, tools=REPAIR_TOOLS, max_turns=60,
                         task_id=self.task_id, project_slug=self.slug)
         self.event("repair_done", stage=stage, turns=res.turns)
+
+    # ── background image fork ───────────────────────────────────
+    def _image_join_wait(self, r: dict[str, Any]) -> str | None:
+        """The join WAITs for images.json, which the BACKGROUND image fork writes. If
+        that fork is no longer running, waiting is pointless: it crashed, or it was
+        launched by an earlier (now dead) run of this task. Re-run it once in the
+        foreground; if images still are not ready, stop with the fork's own output."""
+        if fork_alive(self.ws):
+            return None  # genuinely still generating — keep waiting
+        if self.image_fork_reruns >= 1:
+            return ("image fork is not running and images are still not ready "
+                    f"({r.get('reason')}). Fork output:\n{self._fork_output_tail()}")
+        self.image_fork_reruns += 1
+        from scripts.pipeline import orchestrator as orch
+        state = json.loads((self.ws / "state.json").read_text(encoding="utf-8"))
+        fork = next(s for s in orch.STAGES if s.name == "image-pipeline-fork")
+        cmd = orch._resolve_command(fork, self.task_id, state)
+        self.event("image_fork_rerun", reason=str(r.get("reason"))[:300])
+        env = dict(os.environ)
+        env.pop("LW_LLM_API_KEY", None)
+        if self.slug:
+            env["XS_ACTIVE_PROJECT"] = self.slug
+        log = self.ws / "image-pipeline-fork.foreground.log"
+        try:
+            p = subprocess.run(cmd, shell=True, cwd=str(PLUGIN_ROOT), env=env,
+                               capture_output=True, text=True, timeout=_IMAGE_FORK_TIMEOUT_S)
+            out = (p.stdout or "") + (p.stderr or "")
+            rc: Any = p.returncode
+        except subprocess.TimeoutExpired as e:
+            out = f"{e.stdout or ''}{e.stderr or ''}\n[timed out after {_IMAGE_FORK_TIMEOUT_S}s]"
+            rc = "timeout"
+        log.write_text(out if isinstance(out, str) else str(out), encoding="utf-8")
+        self.event("image_fork_rerun_done", exit=rc, tail=str(out)[-500:])
+        env_line = environment_error({"stderr_tail": str(out)})
+        if env_line:
+            return _env_stop_message("image-pipeline-fork", env_line)
+        return None  # the loop re-asks the runner; the JOIN decides whether images are good
+
+    def _fork_output_tail(self) -> str:
+        parts = []
+        for name in ("image-pipeline-fork.foreground.log", "image-pipeline-fork.background.log",
+                     "image_pipeline.log"):
+            p = self.ws / name
+            if p.exists():
+                parts.append(f"--- {name} ---\n" + p.read_text(encoding="utf-8", errors="replace")[-1200:])
+        return "\n".join(parts) or "(no fork log found)"
 
     # ── errors ──────────────────────────────────────────────────
     def _handle_error(self, r: dict[str, Any]) -> bool:

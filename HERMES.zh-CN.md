@@ -43,11 +43,13 @@ cd ~
 git clone https://github.com/135798888/loamwright-SEO-Skill.git loamwright-seo-skill
 cd loamwright-seo-skill
 python3 -m venv .venv && source .venv/bin/activate
-pip install -r requirements.txt
-python -m pytest tests/ -q        # 应显示 47 passed
+pip install -r requirements.txt   # 若 .venv 里没有 pip（用 uv 建的环境）：
+                                  # uv pip install --python .venv/bin/python -r requirements.txt
+python -m pytest tests/ -q        # 应全部 passed
 ```
 
-> 以后每次更新：`cd ~/loamwright-seo-skill && git pull`
+> 以后每次更新：`git pull`，**然后一定再装一次依赖**（新版本可能加了包）：
+> `uv pip install --python .venv/bin/python -r requirements.txt`（或 `.venv/bin/python -m pip install -r requirements.txt`）
 
 ## 第 2 步：配置模型（中转站）
 
