@@ -61,6 +61,16 @@ limits:
   context_char_budget: 600000     # old tool outputs are elided beyond this (~150k tokens)
   tool_output_char_cap: 40000
 
+# Cross-model SECOND OPINION after the independent reviewer (quality gate 4), before publish.
+# Use a different model family from your writer/reviewer (e.g. Gemini when writing with GPT).
+# mode: off | advisory (record + report only) | block (FAIL → repair → re-judge; still FAIL → stop)
+second_opinion:
+  mode: advisory
+  model: gemini-3.1-pro-low        # exact name from your relay
+  max_rounds: 2                    # block mode only
+  # criteria:                      # optional: replace the 4 default criteria (see second_opinion.py)
+  #   - "FACTS: ..."
+
 # Optional: Telegram report after each article (token can also come from env TG_BOT_TOKEN,
 # chat id from TG_CHAT_ID). If you let Hermes report instead, leave this out.
 # telegram:

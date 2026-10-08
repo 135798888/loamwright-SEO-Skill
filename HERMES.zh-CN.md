@@ -16,7 +16,7 @@
 | `hermes_adapter/bootstrap_project.py` + `templates/clawclipfactory/` | 用"填表"代替交互式 `/init`，工厂事实只能来自你填的内容 |
 | SEOPress 适配 | 新增 `scripts/wordpress/seopress_api.py`，直接调用 SEOPress 自带的 REST API 写入并回读；`verify_post` 的草稿检查改为通过同一接口读取（原版只认 RankMath，SEOPress 草稿会永远校验失败） |
 | `hermes_adapter/hermes/seo-article/SKILL.md` | 给 Hermes 用的技能说明 |
-| `tests/` | 30 个离线测试（含真实编排器的全链路测试），不花钱 |
+| `tests/` | 37 个离线测试（含真实编排器的全链路测试），不花钱 |
 
 ---
 
@@ -44,7 +44,7 @@ git clone https://github.com/135798888/loamwright-SEO-Skill.git loamwright-seo-s
 cd loamwright-seo-skill
 python3 -m venv .venv && source .venv/bin/activate
 pip install -r requirements.txt
-python -m pytest tests/ -q        # 应显示 30 passed
+python -m pytest tests/ -q        # 应显示 37 passed
 ```
 
 > 以后每次更新：`cd ~/loamwright-seo-skill && git pull`
@@ -72,6 +72,25 @@ python -m hermes_adapter.run_article --check
 - GPT-5 这类推理模型不接受 `max_tokens`，只接受 `max_completion_tokens`，也不接受自定义 temperature。adapter 会按模型名自动选择；遇到识别不了的中转站别名，会根据接口返回的报错自动改参数重试，并记住，下次不再出错。
 - 推理模型的"思考"也算在输出 token 里，`max_output_tokens` 建议调到 32000，否则长段落可能写一半被截断。
 - 写手和审稿人是同一家的模型，少了一层跨模型交叉检查。审稿人每次都是全新上下文、看不到前面的过程，偏向会小一些，但比不上换一家模型。
+
+### Gemini 第二意见（跨模型复审）
+
+原作者设计过"用另一家模型复查"，但从没接进流水线。现在它是真正会执行的一步：在独立审稿人（第 4 道质量门）通过之后、发布之前，把草稿交给另一家模型，按 4 条标准逐条判断：
+
+1. **事实**：有没有工厂资料里没有、或互相矛盾的说法（MOQ、交期、产能、认证等），有没有像编造的数据
+2. **采购价值**：对批发商、品牌方是否真的有用，而不是泛泛的消费者科普
+3. **关键词意图**：是否在文章前部就回答了搜索意图
+4. **自然度**：读起来像不像模板化的 AI 文章
+
+`llm.yaml` 里的 `second_opinion` 段：
+
+| mode | 行为 |
+|---|---|
+| `off` | 不运行 |
+| `advisory`（建议先用这个） | 运行并记录到 `second-opinion.json` 和 Telegram 通知，**不拦截** |
+| `block` | 不通过 → 按它指出的问题自动修复 → 再判一次，仍不通过就**停在发布前**。返回结果读不懂也算不通过 |
+
+建议前 10 篇左右用 `advisory`，对照草稿看它判得准不准，准的话再改成 `block`。模型用中转站里的 Gemini（和写手不同家），先试 `gemini-3.1-pro-low`；也可以和列表里最新的 flash 版本各跑几篇比较。记得在 `prices` 里填上它的单价。
 
 ## 第 3 步：其他 API 密钥
 

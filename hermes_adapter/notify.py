@@ -34,6 +34,12 @@ def format_report(rep: dict) -> str:
         lines.append(f"WordPress 文章 ID: {rep['post_id']}（草稿，需人工确认发布）")
     if rep.get("status") != "complete":
         lines.append(f"卡在: {rep.get('stage')}\n原因: {str(rep.get('detail'))[:1200]}")
+    so = rep.get("second_opinion")
+    if so:
+        label = {"PASS": "通过", "FAIL": "未通过", "ERROR": "未能给出结论"}.get(so, so)
+        extra = f"（未通过: {', '.join(rep.get('second_opinion_failed') or [])}）" \
+            if rep.get("second_opinion_failed") else ""
+        lines.append(f"Gemini 第二意见: {label}{extra} — 详见 second-opinion.json")
     lines.append(f"模型花费: ${rep.get('llm_usd')}（{rep.get('llm_calls')} 次调用）")
     if rep.get("unpriced_models"):
         lines.append(f"⚠ 未配置单价的模型: {', '.join(rep['unpriced_models'])}")

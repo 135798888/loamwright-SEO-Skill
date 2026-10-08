@@ -43,6 +43,11 @@ class LLMConfig:
     # reject max_tokens; auto picks by model name and self-corrects on the endpoint's 400.
     token_param: str = "auto"
     reasoning_effort: str | None = None    # e.g. "low" | "medium" | "high" (reasoning models only)
+    # cross-model second opinion after the independent reviewer (see second_opinion.py)
+    second_opinion_mode: str = "off"        # off | advisory | block
+    second_opinion_model: str | None = None
+    second_opinion_criteria: list[str] = field(default_factory=list)
+    second_opinion_rounds: int = 2
     extra_headers: dict[str, str] = field(default_factory=dict)
     # limits
     max_llm_usd_per_article: Decimal = Decimal(15)
@@ -116,6 +121,12 @@ def load_config(path: Path | None = None) -> LLMConfig:
             raise ConfigError(f"prices.{m} must be [input_usd_per_1M, output_usd_per_1M]: {e}") from e
 
     limits = raw.get("limits") or {}
+    so = raw.get("second_opinion") or {}
+    so_mode = str(so.get("mode", "off")).lower()
+    if so_mode not in ("off", "advisory", "block"):
+        raise ConfigError(f"second_opinion.mode must be off | advisory | block (got {so_mode!r})")
+    if so_mode != "off" and not so.get("model"):
+        raise ConfigError("second_opinion.model is required when second_opinion.mode is not off")
     tg = raw.get("telegram") or {}
     tg_token = os.environ.get(str(tg.get("bot_token_env") or "TG_BOT_TOKEN"), "").strip() \
         or str(tg.get("bot_token", "") or "")
@@ -133,6 +144,10 @@ def load_config(path: Path | None = None) -> LLMConfig:
         vision=bool(raw.get("vision", True)),
         token_param=str(raw.get("token_param", "auto")),
         reasoning_effort=(str(raw["reasoning_effort"]) if raw.get("reasoning_effort") else None),
+        second_opinion_mode=so_mode,
+        second_opinion_model=(str(so["model"]) if so.get("model") else None),
+        second_opinion_criteria=[str(c) for c in (so.get("criteria") or [])],
+        second_opinion_rounds=int(so.get("max_rounds", 2)),
         extra_headers={str(k): str(v) for k, v in (raw.get("extra_headers") or {}).items()},
         max_llm_usd_per_article=Decimal(str(limits.get("max_llm_usd_per_article", "15"))),
         writer_parallelism=int(limits.get("writer_parallelism", 4)),

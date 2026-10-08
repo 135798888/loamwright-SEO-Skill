@@ -66,6 +66,8 @@ class RunReport:
     llm_usd: str = "0"
     llm_calls: int = 0
     unpriced_models: list[str] = field(default_factory=list)
+    second_opinion: str | None = None      # PASS | FAIL | ERROR (None = not run)
+    second_opinion_failed: list[str] = field(default_factory=list)
     started_at: str = ""
     finished_at: str = ""
     events: list[dict[str, Any]] = field(default_factory=list)
@@ -102,6 +104,7 @@ class Driver:
         self.gate_repairs: dict[str, int] = defaultdict(int)
         self.bash_errors: dict[str, int] = defaultdict(int)
         self.retry_notes: dict[str, str] = {}
+        self.second_opinion_done = False
 
     # ── logging ─────────────────────────────────────────────────
     def event(self, kind: str, **data: Any) -> None:
@@ -124,12 +127,22 @@ class Driver:
         waited = 0
         try:
             for _ in range(max_iterations):
+                just_completed = completed_llm
                 r = self._drive(self.task_id, completed_llm=completed_llm)
                 completed_llm = None
                 action = r.get("action")
                 stage = r.get("stage")
                 self.event("runner", action=action, stage=stage,
                            steps=[s.get("stage") for s in r.get("steps_run") or []])
+
+                # Second opinion: right after the runner ACCEPTED the independent reviewer
+                # (anything but an ERROR on that stage), before pre-publish / publish.
+                if (just_completed == "independent-reviewer" and not self.second_opinion_done
+                        and not (action == "ERROR" and stage == "independent-reviewer")):
+                    self.second_opinion_done = True
+                    stop = self._second_opinion()
+                    if stop:
+                        return self._finish("failed", stop, "second-opinion")
 
                 if action == "COMPLETE":
                     return self._finish("complete", "pipeline complete (draft + live checks passed)")
@@ -172,6 +185,32 @@ class Driver:
             return self._finish("budget_exceeded", str(e))
         except LLMError as e:
             return self._finish("failed", f"LLM endpoint error: {e}")
+
+    def _second_opinion(self) -> str | None:
+        """Run the cross-model check. Returns a stop reason (block mode) or None."""
+        mode = self.cfg.second_opinion_mode
+        if mode == "off":
+            return None
+        from hermes_adapter import second_opinion as so
+        bc_path = PLUGIN_ROOT / "projects" / (self.slug or "") / "business-context.json"
+        company = (json.loads(bc_path.read_text(encoding="utf-8")).get("company")
+                   if bc_path.exists() else None)
+        rounds = max(1, self.cfg.second_opinion_rounds) if mode == "block" else 1
+        res: dict[str, Any] = {}
+        for rnd in range(1, rounds + 1):
+            res = so.judge(self.cfg, self.client, self.ws,
+                           keyword=self.brief.get("primary_keyword", ""), company=company)
+            self.report.second_opinion = res.get("verdict")
+            self.report.second_opinion_failed = res.get("failed") or []
+            self.event("second_opinion", mode=mode, round=rnd, verdict=res.get("verdict"),
+                       failed=res.get("failed"), error=res.get("error"))
+            if res.get("verdict") == "PASS" or mode == "advisory":
+                return None
+            if res.get("verdict") == "FAIL" and rnd < rounds:
+                self._generic_repair("second-opinion", so.repair_brief(res), "")
+        why = res.get("error") or ", ".join(res.get("failed") or [])
+        return (f"second opinion ({res.get('model')}) still {res.get('verdict')} after "
+                f"{rounds} round(s): {why}. See second-opinion.json.")
 
     def _finish(self, status: str, detail: str, stage: str | None = None) -> RunReport:
         rep = self.report

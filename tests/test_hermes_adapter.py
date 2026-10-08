@@ -438,3 +438,102 @@ def test_token_param_picked_by_model_name():
     assert c._token_param("o4-mini") == "max_completion_tokens"
     assert c._token_param("gpt-4.1") == "max_tokens"
     assert ChatClient(_cfg(token_param="max_tokens"))._token_param("gpt-5") == "max_tokens"
+
+
+# ── second opinion (cross-model) ─────────────────────────────────────────
+
+def _verdict_json(passes: list[bool]) -> str:
+    return json.dumps({"criteria": [{"name": f"c{i}", "pass": p, "reason": "r",
+                                     "quotes": ["q"], "fix": "f"} for i, p in enumerate(passes)],
+                       "summary": "s"})
+
+
+def test_parse_verdict_tolerant_and_strict():
+    from hermes_adapter.second_opinion import parse_verdict
+    assert parse_verdict("```json\n" + _verdict_json([True]) + "\n```")["criteria"][0]["pass"] is True
+    assert parse_verdict("Sure! " + _verdict_json([False, True]))["criteria"][0]["pass"] is False
+    assert parse_verdict('{"criteria":[{"name":"x","pass":"yes"}]}') is None   # not a real boolean
+    assert parse_verdict("no json here") is None
+
+
+def _so_driver(ws_dir, tid, mode, replies, monkeypatch, rounds=2):
+    from hermes_adapter import driver as drv
+    _make_state(ws_dir, tid)
+    (ws_dir / "draft.md").write_text("## Intro\n\nOur MOQ is 50 pcs.\n", encoding="utf-8")
+    cfg = _cfg(second_opinion_mode=mode, second_opinion_model="gemini-x",
+               second_opinion_rounds=rounds)
+    seq = iter([
+        {"action": "DISPATCH_LLM", "stage": "independent-reviewer", "subagent_type": "reviewer",
+         "dispatch_prompt": "p", "expected_outputs": []},
+        {"action": "DISPATCH_LLM", "stage": "image-visual-qa", "subagent_type": "image-visual-qa",
+         "dispatch_prompt": "p", "expected_outputs": []},
+        {"action": "COMPLETE"},
+    ])
+    d = drv.Driver(cfg, tid, pipeline_drive=lambda *a, **k: next(seq))
+    d.client = ScriptedClient([{"role": "assistant", "content": r} for r in replies])
+    monkeypatch.setattr(drv, "run_subagent",
+                        lambda **kw: agent_mod.AgentResult("ok", 1, [], [], "done"))
+    repairs: list[str] = []
+    monkeypatch.setattr(drv.Driver, "_generic_repair", lambda self, s, g, t: repairs.append(g))
+    return d, repairs
+
+
+def test_second_opinion_advisory_records_but_never_blocks(ws, monkeypatch):
+    tid, d = ws
+    drv_, repairs = _so_driver(d, tid, "advisory", [_verdict_json([False, True])], monkeypatch)
+    rep = drv_.run()
+    assert rep.status == "complete" and rep.second_opinion == "FAIL" and repairs == []
+    saved = json.loads((d / "second-opinion.json").read_text())
+    assert saved["verdict"] == "FAIL" and saved["model"] == "gemini-x" and saved["failed"] == ["c0"]
+    # ran exactly once, and only after the reviewer — the judge saw the draft
+    assert "Our MOQ is 50 pcs." in drv_.client.calls[0]["messages"][1]["content"]
+    assert len(drv_.client.calls) == 1
+    # …and it ran BEFORE the next stage (image-visual-qa → pre-publish → publish) was dispatched
+    kinds = [(e["kind"], e.get("stage")) for e in drv_.report.events]
+    assert kinds.index(("second_opinion", None)) < kinds.index(("dispatch", "image-visual-qa"))
+
+
+def test_second_opinion_block_repairs_then_passes(ws, monkeypatch):
+    tid, d = ws
+    drv_, repairs = _so_driver(d, tid, "block",
+                               [_verdict_json([False]), _verdict_json([True])], monkeypatch)
+    rep = drv_.run()
+    assert rep.status == "complete" and rep.second_opinion == "PASS"
+    assert len(repairs) == 1 and "c0" in repairs[0]
+
+
+def test_second_opinion_block_stops_before_publish_when_still_failing(ws, monkeypatch):
+    tid, d = ws
+    drv_, repairs = _so_driver(d, tid, "block",
+                               [_verdict_json([False]), _verdict_json([False])], monkeypatch)
+    rep = drv_.run()
+    assert rep.status == "failed" and rep.stage == "second-opinion"
+    assert len(repairs) == 1                     # repair between rounds, not after the last
+
+
+def test_second_opinion_unreadable_verdict_is_not_a_pass_in_block_mode(ws, monkeypatch):
+    tid, d = ws
+    drv_, _ = _so_driver(d, tid, "block", ["I think it's fine."] * 4, monkeypatch, rounds=1)
+    rep = drv_.run()
+    assert rep.status == "failed" and rep.second_opinion == "ERROR"
+
+
+def test_second_opinion_off_never_calls_judge(ws, monkeypatch):
+    tid, d = ws
+    drv_, _ = _so_driver(d, tid, "off", [], monkeypatch)
+    rep = drv_.run()
+    assert rep.status == "complete" and rep.second_opinion is None and drv_.client.calls == []
+
+
+def test_second_opinion_config_validation(tmp_path, monkeypatch):
+    from hermes_adapter.config import ConfigError, load_config
+    p = tmp_path / "llm.yaml"
+    p.write_text("base_url: http://x/v1\napi_key: k\nmodels: {default: m}\n"
+                 "second_opinion: {mode: block}\n", encoding="utf-8")
+    monkeypatch.setenv("LW_LLM_CONFIG", str(p))
+    with pytest.raises(ConfigError):
+        load_config()
+    p.write_text("base_url: http://x/v1\napi_key: k\nmodels: {default: m}\n"
+                 "second_opinion: {mode: advisory, model: gemini-3.1-pro-low}\n", encoding="utf-8")
+    cfg = load_config()
+    assert cfg.second_opinion_mode == "advisory" and cfg.second_opinion_model == "gemini-3.1-pro-low"
