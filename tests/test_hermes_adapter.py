@@ -684,3 +684,64 @@ def test_bash_stage_failure_report_carries_the_commands_own_output(ws, monkeypat
         "stderr_tail": ""}).run()
     assert rep.status == "failed"
     assert "rest_cannot_create" in rep.detail and "publish-result.json" in rep.detail
+
+
+# ── categories (2026-10-08: meta-builder invented 'Buying Guides', publish aborted) ──
+
+def _live_snapshot(project_slug: str) -> dict:
+    cats = {3: ("Materials", "materials"), 4: ("Molds & Custom Tooling", "molds-custom-tooling"),
+            5: ("Sourcing & RFQ", "sourcing-rfq"), 1: ("Uncategorized", "uncategorized")}
+    by_id = {i: {"id": i, "name": n, "slug": s, "parent_id": 0, "parent_slug": None,
+                 "description_summary": "", "post_count": 1} for i, (n, s) in cats.items()}
+    return {"project_slug": project_slug, "site_slug": project_slug,
+            "snapshot_at": "2026-10-08T00:00:00+00:00", "category_count": len(by_id),
+            "categories_by_id": by_id,
+            "name_to_id": {v["name"]: k for k, v in by_id.items()},
+            "slug_to_id": {v["slug"]: k for k, v in by_id.items()}}
+
+
+def test_invented_categories_are_replaced_by_live_default_before_publish():
+    """Seam: template default + live snapshot → the ORIGINAL category_selector rewrites
+    the meta-builder's invented names to a category that exists, with its id."""
+    from hermes_adapter.bootstrap_project import install
+    from hermes_adapter.task import create_task
+    from scripts.build import category_selector
+    tpl = PLUGIN_ROOT / "hermes_adapter" / "templates" / "clawclipfactory"
+    slug, _ = install(tpl, allow_todo=True, force=True)
+    live = PLUGIN_ROOT / "projects" / slug / "categories-live.json"
+    live.write_text(json.dumps(_live_snapshot(slug)), encoding="utf-8")
+    tid = create_task(project_slug=slug, keyword="claw clips wholesale", image_count=0)
+    ws_dir = WS_ROOT / tid
+    try:
+        (ws_dir / "draft.md").write_text("# Claw clips wholesale\n\nBody about sourcing.\n")
+        (ws_dir / "angle.json").write_text(json.dumps({"format_id": "buyers-guide"}))
+        (ws_dir / "meta.json").write_text(json.dumps(
+            {"title": "Claw clips wholesale", "categories": ["Buying Guides", "Wholesale Sourcing"]}))
+        category_selector.main(["--task-id", tid, "--project-slug", slug])
+        meta = json.loads((ws_dir / "meta.json").read_text())
+        assert meta["categories"] == ["Sourcing & RFQ"]
+        assert meta["category_ids"] == [5]
+    finally:
+        shutil.rmtree(ws_dir, ignore_errors=True)
+        live.unlink(missing_ok=True)
+
+
+def test_check_categories_flags_a_default_that_does_not_exist(monkeypatch, tmp_path):
+    from hermes_adapter import bootstrap_project as bp
+    from hermes_adapter.bootstrap_project import install
+    import scripts.wordpress.snapshot_categories as snapmod
+    tpl = PLUGIN_ROOT / "hermes_adapter" / "templates" / "clawclipfactory"
+    slug, _ = install(tpl, allow_todo=True, force=True)
+    out = tmp_path / "categories-live.json"
+    out.write_text(json.dumps(_live_snapshot(slug)), encoding="utf-8")
+    monkeypatch.setattr(snapmod, "write_snapshot", lambda s, **k: out)
+    assert bp.check_categories(slug)["ok"] is True
+    bc_p = PLUGIN_ROOT / "projects" / slug / "business-context.json"
+    bc = json.loads(bc_p.read_text())
+    bc["wordpress"]["default_categories"] = ["Buying Guides"]
+    bc_p.write_text(json.dumps(bc))
+    try:
+        r = bp.check_categories(slug)
+        assert r["ok"] is False and "Buying Guides" in r["hint"] and "Sourcing & RFQ" in r["hint"]
+    finally:
+        install(tpl, allow_todo=True, force=True)

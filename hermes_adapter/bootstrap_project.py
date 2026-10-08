@@ -149,14 +149,44 @@ def check_wp(slug: str) -> dict[str, Any]:
         return {"ok": False, "error": f"{type(e).__name__}: {e}"}
     roles = me.get("roles") or []
     can_edit = bool(set(roles) & {"administrator", "editor"})
-    ok = bool(h.get("wp_rest")) and h.get("seo_plugin") == "seopress" and can_edit
+    cats = check_categories(slug)
+    ok = (bool(h.get("wp_rest")) and h.get("seo_plugin") == "seopress" and can_edit
+          and cats.get("ok", False))
     hint = None
     if h.get("seo_plugin") != "seopress":
         hint = f"SEOPress REST API not detected (seo_plugin={h.get('seo_plugin')!r}) — is SEOPress active?"
     elif not can_edit:
         hint = f"WordPress user roles {roles} — the application-password user should be Editor or Administrator"
+    elif not cats.get("ok"):
+        hint = cats.get("hint")
     return {"ok": ok, "wp_rest": h.get("wp_rest"), "seo_plugin": h.get("seo_plugin"),
-            "user": me.get("slug"), "roles": roles, "hint": hint or h.get("info", {}).get("wp_error")}
+            "user": me.get("slug"), "roles": roles, "categories": cats,
+            "hint": hint or h.get("info", {}).get("wp_error")}
+
+
+def check_categories(slug: str) -> dict[str, Any]:
+    """Snapshot the live categories (projects/{slug}/categories-live.json) and confirm
+    every wordpress.default_categories name exists. The publisher never creates
+    categories; without a valid default the meta-builder invents names and the
+    publish step aborts at the very end of the pipeline (2026-10-08)."""
+    from scripts.wordpress.snapshot_categories import write_snapshot
+    try:
+        path = write_snapshot(slug)
+        snap = json.loads(path.read_text(encoding="utf-8"))
+    except Exception as e:  # noqa: BLE001
+        return {"ok": False, "hint": f"could not read WordPress categories: {type(e).__name__}: {e}"}
+    live = sorted(n for n in snap.get("name_to_id", {}) if n != "Uncategorized")
+    bc = json.loads((_ROOT / "projects" / slug / "business-context.json").read_text("utf-8"))
+    defaults = (bc.get("wordpress") or {}).get("default_categories") or []
+    missing = [d for d in defaults if d not in snap.get("name_to_id", {})]
+    out: dict[str, Any] = {"live": live, "default_categories": defaults, "ok": True}
+    if not defaults:
+        out.update(ok=False, hint="business-context.json wordpress.default_categories is empty — "
+                   f"set it to one of the live categories: {live}")
+    elif missing:
+        out.update(ok=False, hint=f"default_categories {missing} do not exist on the site. "
+                   f"Live categories: {live}")
+    return out
 
 
 def main() -> int:

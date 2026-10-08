@@ -84,7 +84,7 @@
   },
 
   "wordpress": {
-    "default_categories": ["TODO: your existing blog category name, e.g. Blog"],
+    "default_categories": ["Sourcing & RFQ"],
     "seo_plugin": "seopress",
     "seo_plugin_schema_provided": []
   },

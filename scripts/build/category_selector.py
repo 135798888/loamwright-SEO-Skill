@@ -496,9 +496,18 @@ def select_categories(
                 ))
                 seen_slugs.add(slug)
         else:
-            # Default name not in categories-config — include with bare name
+            # Default name not in categories-config — include with bare name. Take the
+            # REAL slug from the live snapshot when the name exists there: WordPress
+            # slugifies "Sourcing & RFQ" to "sourcing-rfq", not "sourcing-and-rfq", and
+            # a guessed slug failed id resolution so the default was never applied
+            # (2026-10-08: invented meta categories survived and the publish aborted).
+            _live_id = _lookup_name_id((live_snapshot or {}).get("name_to_id") or {}, default_name)
+            _live_slug = (((live_snapshot or {}).get("categories_by_id") or {})
+                          .get(_live_id if _live_id is not None else -1, {}) or
+                          ((live_snapshot or {}).get("categories_by_id") or {})
+                          .get(str(_live_id), {})).get("slug")
             recommended.append(CategoryDecision(
-                slug=default_name.lower().replace(" ", "-").replace("&", "and"),
+                slug=_live_slug or default_name.lower().replace(" ", "-").replace("&", "and"),
                 name=default_name,
                 reason="project default (not found in categories-config — bare include)",
                 is_default=True, signals_matched=["is_default"],
