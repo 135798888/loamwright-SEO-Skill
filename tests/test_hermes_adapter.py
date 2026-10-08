@@ -264,6 +264,58 @@ def test_driver_gate_failed_runs_repair_then_stops_after_limit(ws, monkeypatch):
     assert rep.status == "failed" and "render-lint" in rep.detail
 
 
+def test_driver_environment_error_stops_without_llm_repair(ws, monkeypatch):
+    """The 2026-10-08 run: render-lint crashed on a missing package and the driver spent
+    3 LLM repair rounds editing a draft that was never the problem."""
+    from hermes_adapter import driver as drv
+    tid, d = ws
+    _make_state(d, tid)
+    repairs: list[str] = []
+    monkeypatch.setattr(drv.Driver, "_generic_repair", lambda self, s, g, t: repairs.append(s))
+    payload = {"action": "GATE_FAILED", "stage": "render-lint",
+               "gate": "render-lint.json not produced", "stdout_tail": "",
+               "stderr_tail": "render_lint failed: Linkify enabled but not installed.\n"}
+    rep = drv.Driver(_cfg(repair_rounds=3), tid, pipeline_drive=lambda *a, **k: dict(payload)).run()
+    assert repairs == []
+    assert rep.status == "failed" and "environment problem" in rep.detail
+    assert "Linkify enabled but not installed" in rep.detail and "pip install" in rep.detail
+
+    # Same for a BASH-stage ERROR carrying a ModuleNotFoundError — no bash retry either.
+    tid2_rep = drv.Driver(_cfg(), tid, pipeline_drive=lambda *a, **k: {
+        "action": "ERROR", "stage": "chart-render", "detail": "verify failed",
+        "stderr_tail": "ModuleNotFoundError: No module named 'PIL'"}).run()
+    assert tid2_rep.status == "failed" and "No module named 'PIL'" in tid2_rep.detail
+
+
+def test_driver_gate_artifact_missing_gets_one_repair_only(ws, monkeypatch):
+    from hermes_adapter import driver as drv
+    tid, d = ws
+    _make_state(d, tid)
+    repairs: list[str] = []
+    monkeypatch.setattr(drv.Driver, "_generic_repair", lambda self, s, g, t: repairs.append(s))
+    rep = drv.Driver(_cfg(repair_rounds=3), tid, pipeline_drive=lambda *a, **k: {
+        "action": "GATE_FAILED", "stage": "render-lint",
+        "gate": "render-lint.json not produced", "stderr_tail": "Traceback ... KeyError: 'x'"}).run()
+    assert repairs == ["render-lint"]
+    assert rep.status == "failed" and "1 repair round" in rep.detail
+
+
+def test_environment_error_does_not_fire_on_ordinary_gate_defects():
+    from hermes_adapter.driver import environment_error
+    assert environment_error({"gate": "L12 em-dash in paragraph 4", "stdout_tail": "3 defects"}) is None
+    assert environment_error({"gate": "review.json score 76 < 80"}) is None
+
+
+def test_markdown_renderer_dependencies_installed():
+    """markdown_to_html enables linkify; render-lint AND the publisher both go through it,
+    so a missing linkify-it-py kills every article at render-lint."""
+    from scripts.build.markdown_to_html import convert
+    html = convert("# T\n\nSee https://example.com today.\n")
+    assert 'href="https://example.com"' in html
+    reqs = (Path(__file__).resolve().parents[1] / "requirements.txt").read_text(encoding="utf-8")
+    assert "linkify-it-py" in reqs
+
+
 def test_driver_budget_exceeded_stops_cleanly(ws, monkeypatch):
     from hermes_adapter import driver as drv
     from hermes_adapter.llm import BudgetExceeded
