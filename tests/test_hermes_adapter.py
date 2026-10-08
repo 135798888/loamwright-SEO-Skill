@@ -9,6 +9,8 @@ the real run_pipeline accepting an adapter-created task.
 from __future__ import annotations
 
 import json
+import os
+import sys
 import shutil
 import threading
 from decimal import Decimal
@@ -589,3 +591,80 @@ def test_second_opinion_config_validation(tmp_path, monkeypatch):
                  "second_opinion: {mode: advisory, model: gemini-3.1-pro-low}\n", encoding="utf-8")
     cfg = load_config()
     assert cfg.second_opinion_mode == "advisory" and cfg.second_opinion_model == "gemini-3.1-pro-low"
+
+
+# ── background image fork (2026-10-08: join waited 66 min on a fork that had died) ──
+
+def test_background_launch_keeps_output_and_pid_and_liveness_tracks_it(tmp_path):
+    """Seam: the runner's real launcher + the driver's real liveness check."""
+    import time as _t
+    from hermes_adapter.driver import fork_alive
+    from scripts.pipeline.run_pipeline import _launch_background
+    log = tmp_path / "image-pipeline-fork.background.log"
+    _launch_background(f'{sys.executable} -c "import sys,time; print(\'boom\', file=sys.stderr); '
+                       f'time.sleep(1.5)" image_fork', log_path=log)
+    assert (tmp_path / "image-pipeline-fork.background.pid").exists()
+    assert fork_alive(tmp_path)
+    for _ in range(50):
+        if not fork_alive(tmp_path):
+            break
+        _t.sleep(0.1)
+    assert not fork_alive(tmp_path)
+    assert "boom" in log.read_text()
+
+
+def test_fork_without_pid_file_is_not_alive(tmp_path):
+    from hermes_adapter.driver import fork_alive
+    assert not fork_alive(tmp_path)
+    (tmp_path / "image-pipeline-fork.background.pid").write_text(str(os.getpid()))
+    assert not fork_alive(tmp_path)  # a live pid that is not an image fork
+
+
+def _join_wait(ws_dir):
+    return {"action": "WAIT", "stage": "image-pipeline-join", "reason": ["images.json"]}
+
+
+def test_dead_fork_is_rerun_in_foreground_then_pipeline_continues(ws, monkeypatch):
+    from hermes_adapter import driver as drv
+    from scripts.pipeline import orchestrator as orch
+    tid, d = ws
+    _make_state(d, tid)
+    out = d / "images.json"
+    monkeypatch.setattr(orch, "_resolve_command", lambda stage, t, st: (
+        f'{sys.executable} -c "open(r\'{out}\', \'w\').write(\'[]\')"'))
+    monkeypatch.setattr(drv.time, "sleep", lambda s: None)
+    seq = iter([_join_wait(d), {"action": "COMPLETE"}])
+    rep = drv.Driver(_cfg(), tid, pipeline_drive=lambda *a, **k: next(seq)).run()
+    assert rep.status == "complete"
+    assert out.exists()
+    assert any(e["kind"] == "image_fork_rerun" for e in rep.events)
+
+
+def test_dead_fork_rerun_that_still_yields_no_images_stops_with_its_output(ws, monkeypatch):
+    from hermes_adapter import driver as drv
+    from scripts.pipeline import orchestrator as orch
+    tid, d = ws
+    _make_state(d, tid)
+    monkeypatch.setattr(orch, "_resolve_command", lambda stage, t, st: (
+        f'{sys.executable} -c "import sys; print(\'relay 502 on every slot\', file=sys.stderr); sys.exit(2)"'))
+    monkeypatch.setattr(drv.time, "sleep", lambda s: None)
+    calls: list[int] = []
+
+    def fake_drive(*a, **k):
+        calls.append(1)
+        return _join_wait(d)
+    rep = drv.Driver(_cfg(), tid, pipeline_drive=fake_drive).run()
+    assert rep.status == "failed" and "relay 502 on every slot" in rep.detail
+    assert len(calls) == 2  # one foreground rerun, then stop — not 66 minutes of polling
+
+
+def test_live_fork_is_waited_on_not_rerun(ws, monkeypatch):
+    from hermes_adapter import driver as drv
+    tid, d = ws
+    _make_state(d, tid)
+    monkeypatch.setattr(drv, "fork_alive", lambda ws_: True)
+    monkeypatch.setattr(drv.time, "sleep", lambda s: None)
+    seq = iter([_join_wait(d), _join_wait(d), {"action": "COMPLETE"}])
+    rep = drv.Driver(_cfg(), tid, pipeline_drive=lambda *a, **k: next(seq)).run()
+    assert rep.status == "complete"
+    assert not any(e["kind"] == "image_fork_rerun" for e in rep.events)
