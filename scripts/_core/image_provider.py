@@ -79,6 +79,11 @@ class ImageProvider:
     # Banana Pro true 4K) — NOT OpenAI-compatible; handled by a dedicated branch
     # in openai_image_pipeline._generate_vertex_gemini.
     protocol: str = "openai"
+    # Opt-in tolerance for relays that ignore the requested size (e.g. always return
+    # 1672x941). None (default) = original behaviour: exact pixel match or the slot
+    # fails over. When set, a smaller image is ACCEPTED if, after a centre-crop to the
+    # requested aspect ratio, its long edge is >= this value (never upscaled).
+    min_long_edge: int | None = None
 
 
 def _warn(msg: str, log: Any | None) -> None:
@@ -168,8 +173,15 @@ def resolve_providers(log: Any | None = None) -> list[ImageProvider]:
                     log,
                 )
                 continue
+            mle = e.get("min_long_edge")
+            try:
+                min_long_edge = int(mle) if mle not in (None, "") else None
+            except (TypeError, ValueError):
+                _warn(f"provider {name!r}: min_long_edge {mle!r} is not an integer; ignoring", log)
+                min_long_edge = None
             providers.append(ImageProvider(
                 name=name, base_url=base_url, api_key=api_key, model=model, protocol=protocol,
+                min_long_edge=min_long_edge,
             ))
 
     # Backward-compat / safety net: nothing usable from config => official OpenAI only.

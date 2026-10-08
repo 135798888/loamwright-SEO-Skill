@@ -159,7 +159,8 @@ def _enforce_4k_floor(size: str, aspect_ratio: str | None = None) -> str:
     )
 
 
-def _verify_saved_dimensions(img_path: Path, expected_size: str, provider: str) -> None:
+def _verify_saved_dimensions(img_path: Path, expected_size: str, provider: str,
+                             min_long_edge: int | None = None) -> None:
     """Hard-verify the saved file's pixel dimensions match the requested size.
 
     Relays can return HTTP success with silently-degraded resolution (openclawroot
@@ -181,11 +182,44 @@ def _verify_saved_dimensions(img_path: Path, expected_size: str, provider: str) 
         return
     except Exception as e:
         raise RuntimeError(f"saved image unreadable for dimension check: {e}") from e
+    if (actual_w, actual_h) != (exp_w, exp_h) and min_long_edge:
+        _accept_smaller(img_path, exp_w, exp_h, actual_w, actual_h, provider, min_long_edge)
+        return
     if (actual_w, actual_h) != (exp_w, exp_h):
         raise RuntimeError(
             f"dimension mismatch from provider={provider}: requested {expected_size}, "
             f"got {actual_w}x{actual_h} (silent degradation — failing slot over to next provider)"
         )
+
+
+def _accept_smaller(img_path: Path, exp_w: int, exp_h: int, act_w: int, act_h: int,
+                    provider: str, min_long_edge: int) -> None:
+    """Opt-in path (provider config ``min_long_edge``) for relays that ignore size.
+
+    Centre-crops to the REQUESTED aspect ratio when the returned ratio differs by
+    more than 2%, never upscales, and still fails the slot (so the provider chain
+    falls through) when the result's long edge is below ``min_long_edge``.
+    """
+    from PIL import Image
+    want = exp_w / exp_h
+    got = act_w / act_h
+    w, h = act_w, act_h
+    if abs(got - want) / want > 0.02:
+        if got > want:            # too wide → trim the sides
+            w = int(round(act_h * want))
+        else:                     # too tall → trim top/bottom
+            h = int(round(act_w / want))
+    if max(w, h) < min_long_edge:
+        raise RuntimeError(
+            f"dimension too small from provider={provider}: requested {exp_w}x{exp_h}, got "
+            f"{act_w}x{act_h} → {w}x{h} after aspect crop, below min_long_edge={min_long_edge}"
+        )
+    if (w, h) != (act_w, act_h):
+        with Image.open(img_path) as im:
+            left, top = (act_w - w) // 2, (act_h - h) // 2
+            im.crop((left, top, left + w, top + h)).save(img_path)
+    print(f"⚠ provider={provider}: accepted {w}x{h} instead of requested {exp_w}x{exp_h} "
+          f"(min_long_edge={min_long_edge})", file=sys.stderr)
 
 
 # ─── Vertex AI (Gemini 3 Pro Image / Nano Banana Pro) provider ──────
@@ -696,7 +730,8 @@ def generate_realtime_one(
                 # Hard gate BEFORE watermark/cost: a relay that silently degrades
                 # resolution must fail this provider attempt so the loop falls
                 # through to the next provider (2026-06-10, openclawroot 1672x941).
-                _verify_saved_dimensions(img_path, spec.size, prov.name)
+                _verify_saved_dimensions(img_path, spec.size, prov.name,
+                                         getattr(prov, "min_long_edge", None))
                 _watermark_after_save(img_path, out_dir, spec, log)
                 elapsed = time.time() - t0
                 # Cost estimate: keyed to "gpt-image-2" official per-image table
