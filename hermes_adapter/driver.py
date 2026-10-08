@@ -52,6 +52,30 @@ _CTA_GATES = {"cta-diversity-check", "cta-tone-check"}
 _CONTENT_GATED_LLM = {"independent-reviewer": "review.json",
                       "fact-check-and-citation": "fact-check.json"}
 
+# A checker that could not RUN (missing Python package / binary) is not a content
+# defect: no edit to draft.md can fix it, so LLM repair rounds there are pure spend.
+_ENV_ERROR_RE = re.compile(
+    r"ModuleNotFoundError|No module named|ImportError|cannot import name|"
+    r"\bnot installed\b|command not found|No such file or directory: '[^']*python",
+    re.IGNORECASE)
+
+
+def environment_error(r: dict[str, Any]) -> str | None:
+    """Return the matching line if a runner response is an environment failure."""
+    for key in ("gate", "stderr_tail", "stdout_tail", "detail"):
+        text = str(r.get(key) or "")
+        m = _ENV_ERROR_RE.search(text)
+        if m:
+            line = next((ln for ln in text.splitlines() if m.group(0) in ln), m.group(0))
+            return line.strip()[:400]
+    return None
+
+
+def _env_stop_message(stage: str | None, line: str) -> str:
+    return (f"environment problem at {stage}, not an article defect: {line}. "
+            "Fix the server environment (usually: .venv/bin/pip install -r requirements.txt), "
+            "then resume with --resume. No LLM repair was attempted.")
+
 
 @dataclass
 class RunReport:
@@ -152,11 +176,22 @@ class Driver:
                         completed_llm = stage
                     continue
 
+                if action in ("GATE_FAILED", "ERROR"):
+                    env = environment_error(r)
+                    if env:
+                        self.event("environment_error", stage=stage, line=env)
+                        return self._finish("failed", _env_stop_message(stage, env), stage)
+
                 if action == "GATE_FAILED":
                     self.gate_repairs[stage] += 1
-                    if self.gate_repairs[stage] > self.cfg.repair_rounds:
+                    # The gate's own result file is missing → the checker crashed rather than
+                    # judged the draft. One repair round in case the draft content tripped it;
+                    # repeating that is spend without information.
+                    limit = (1 if "not produced" in str(r.get("gate") or "")
+                             else self.cfg.repair_rounds)
+                    if self.gate_repairs[stage] > limit:
                         return self._finish("failed", f"gate {stage} still failing after "
-                                            f"{self.cfg.repair_rounds} repair rounds: {r.get('gate')}",
+                                            f"{limit} repair round(s): {r.get('gate')}",
                                             stage)
                     self._repair_gate(stage, r)
                     continue

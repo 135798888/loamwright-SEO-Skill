@@ -288,6 +288,7 @@ def advance(task_id: str, completed_llm: str | None = None, max_bash: int = 60) 
         if not gate_ok:
             return {"action": "GATE_FAILED", "stage": stage, "gate": gate_reason,
                     "stdout_tail": (proc.stdout or "")[-600:],
+                    "stderr_tail": (proc.stderr or "")[-400:],
                     "detail": "A quality/lint gate found defects. Route to repair (fix the draft "
                               "or re-dispatch the responsible subagent), then re-invoke run_pipeline.",
                     "steps_run": steps}
