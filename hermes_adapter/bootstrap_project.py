@@ -167,6 +167,8 @@ def main() -> int:
     ap.add_argument("--check-wp", action="store_true", help="test WordPress credentials + SEOPress API")
     args = ap.parse_args()
     os.chdir(_ROOT)
+    from hermes_adapter.runtime import pin_interpreter_on_path
+    pin_interpreter_on_path()
     slug, notes = install(args.template.resolve(), allow_todo=args.allow_todo, force=args.force)
     out: dict[str, Any] = {"ok": True, "project": slug, "path": f"projects/{slug}", "notes": notes}
     if args.check_wp:

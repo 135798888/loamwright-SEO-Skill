@@ -16,7 +16,7 @@
 | `hermes_adapter/bootstrap_project.py` + `templates/clawclipfactory/` | 用"填表"代替交互式 `/init`，工厂事实只能来自你填的内容 |
 | SEOPress 适配 | 新增 `scripts/wordpress/seopress_api.py`，直接调用 SEOPress 自带的 REST API 写入并回读；`verify_post` 的草稿检查改为通过同一接口读取（原版只认 RankMath，SEOPress 草稿会永远校验失败） |
 | `hermes_adapter/hermes/seo-article/SKILL.md` | 给 Hermes 用的技能说明 |
-| `tests/` | 44 个离线测试（含真实编排器的全链路测试），不花钱 |
+| `tests/` | 47 个离线测试（含真实编排器的全链路测试），不花钱 |
 
 ---
 
@@ -44,7 +44,7 @@ git clone https://github.com/135798888/loamwright-SEO-Skill.git loamwright-seo-s
 cd loamwright-seo-skill
 python3 -m venv .venv && source .venv/bin/activate
 pip install -r requirements.txt
-python -m pytest tests/ -q        # 应显示 44 passed
+python -m pytest tests/ -q        # 应显示 47 passed
 ```
 
 > 以后每次更新：`cd ~/loamwright-seo-skill && git pull`
