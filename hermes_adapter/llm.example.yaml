@@ -29,6 +29,19 @@ models:
   # researcher: claude-sonnet-4-5
   # image-visual-qa: gpt-4o           # must accept images
 
+# ── ChatGPT-only setup (replace the models: block above with this) ──────────────
+# Use the exact names YOUR relay lists; pick its strongest GPT for the 4 quality roles.
+# models:
+#   default: gpt-5-mini        # research plumbing, inline stages, repair, CTA, schema…
+#   writer: gpt-5
+#   fact-checker: gpt-5
+#   humanizer: gpt-5
+#   reviewer: gpt-5
+#   image-visual-qa: gpt-5     # needs vision
+# max_output_tokens: 32000      # reasoning models spend output tokens on hidden reasoning
+# reasoning_effort: medium      # optional: low | medium | high
+# token_param: auto             # gpt-5/o-series need max_completion_tokens; auto handles it
+
 # Per-stage overrides beat per-role (stage names from scripts/pipeline/orchestrator.py).
 stage_models:
   # outline-architect: claude-opus-4-1

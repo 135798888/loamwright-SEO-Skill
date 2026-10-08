@@ -16,7 +16,7 @@
 | `hermes_adapter/bootstrap_project.py` + `templates/clawclipfactory/` | 用"填表"代替交互式 `/init`，工厂事实只能来自你填的内容 |
 | SEOPress 适配 | 新增 `scripts/wordpress/seopress_api.py`，直接调用 SEOPress 自带的 REST API 写入并回读；`verify_post` 的草稿检查改为通过同一接口读取（原版只认 RankMath，SEOPress 草稿会永远校验失败） |
 | `hermes_adapter/hermes/seo-article/SKILL.md` | 给 Hermes 用的技能说明 |
-| `tests/` | 28 个离线测试（含真实编排器的全链路测试），不花钱 |
+| `tests/` | 30 个离线测试（含真实编排器的全链路测试），不花钱 |
 
 ---
 
@@ -44,7 +44,7 @@ git clone https://github.com/135798888/loamwright-SEO-Skill.git loamwright-seo-s
 cd loamwright-seo-skill
 python3 -m venv .venv && source .venv/bin/activate
 pip install -r requirements.txt
-python -m pytest tests/ -q        # 应显示 28 passed
+python -m pytest tests/ -q        # 应显示 30 passed
 ```
 
 > 以后每次更新：`cd ~/loamwright-seo-skill && git pull`
@@ -64,6 +64,14 @@ python -m hermes_adapter.run_article --check
 - **模型必须支持 function calling（工具调用）**，否则 agent 没法读写文件。
 - 写手（writer）、审稿（reviewer）、润色（humanizer）建议用最强的模型，这三个决定文章质量。
 - `prices` 填中转站的实际单价（美元/百万 token），用于单篇预算上限 `max_llm_usd_per_article`。没填单价的模型按 0 计算，报告里会提示。
+
+### 只用 ChatGPT（OpenAI）模型
+
+可以全部用 GPT 模型（包括生图用 gpt-image-2）。`llm.yaml` 里参考 `llm.example.yaml` 的 "ChatGPT-only setup" 段：写手、事实核查、去 AI 味、审稿这 4 个决定质量的角色用中转站里最强的 GPT，其他用 mini 版省钱。注意：
+
+- GPT-5 这类推理模型不接受 `max_tokens`，只接受 `max_completion_tokens`，也不接受自定义 temperature。adapter 会按模型名自动选择；遇到识别不了的中转站别名，会根据接口返回的报错自动改参数重试，并记住，下次不再出错。
+- 推理模型的"思考"也算在输出 token 里，`max_output_tokens` 建议调到 32000，否则长段落可能写一半被截断。
+- 写手和审稿人是同一家的模型，少了一层跨模型交叉检查。审稿人每次都是全新上下文、看不到前面的过程，偏向会小一些，但比不上换一家模型。
 
 ## 第 3 步：其他 API 密钥
 

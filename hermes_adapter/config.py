@@ -39,6 +39,10 @@ class LLMConfig:
     max_output_tokens: int = 16000
     temperature: float | None = None
     vision: bool = True
+    # "auto" | "max_tokens" | "max_completion_tokens". OpenAI reasoning models (gpt-5*, o-series)
+    # reject max_tokens; auto picks by model name and self-corrects on the endpoint's 400.
+    token_param: str = "auto"
+    reasoning_effort: str | None = None    # e.g. "low" | "medium" | "high" (reasoning models only)
     extra_headers: dict[str, str] = field(default_factory=dict)
     # limits
     max_llm_usd_per_article: Decimal = Decimal(15)
@@ -127,6 +131,8 @@ def load_config(path: Path | None = None) -> LLMConfig:
         max_output_tokens=int(raw.get("max_output_tokens", 16000)),
         temperature=(float(raw["temperature"]) if raw.get("temperature") is not None else None),
         vision=bool(raw.get("vision", True)),
+        token_param=str(raw.get("token_param", "auto")),
+        reasoning_effort=(str(raw["reasoning_effort"]) if raw.get("reasoning_effort") else None),
         extra_headers={str(k): str(v) for k, v in (raw.get("extra_headers") or {}).items()},
         max_llm_usd_per_article=Decimal(str(limits.get("max_llm_usd_per_article", "15"))),
         writer_parallelism=int(limits.get("writer_parallelism", 4)),

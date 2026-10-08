@@ -378,3 +378,63 @@ def test_full_loop_research_stage_verified_by_real_orchestrator(monkeypatch):
     finally:
         srv.shutdown()
         shutil.rmtree(WS_ROOT / tid, ignore_errors=True)
+
+
+# ── OpenAI reasoning models (gpt-5 / o-series) parameter quirks ──────────
+
+class _StrictReasoningAPI(BaseHTTPRequestHandler):
+    """Mimics OpenAI's 400s for reasoning models: no max_tokens, default temperature only."""
+    bodies: list[dict] = []
+
+    def do_POST(self):
+        body = json.loads(self.rfile.read(int(self.headers["content-length"])))
+        _StrictReasoningAPI.bodies.append(body)
+        err = None
+        if "max_tokens" in body:
+            err = ("Unsupported parameter: 'max_tokens' is not supported with this model. "
+                   "Use 'max_completion_tokens' instead.")
+        elif "temperature" in body:
+            err = ("Unsupported value: 'temperature' does not support 0.4 with this model. "
+                   "Only the default (1) value is supported.")
+        if err:
+            out = json.dumps({"error": {"message": err, "type": "invalid_request_error"}}).encode()
+            self.send_response(400)
+        else:
+            out = json.dumps({"choices": [{"message": {"role": "assistant", "content": "ok"},
+                                           "finish_reason": "stop"}],
+                              "usage": {"prompt_tokens": 1, "completion_tokens": 1}}).encode()
+            self.send_response(200)
+        self.send_header("content-length", str(len(out))); self.end_headers(); self.wfile.write(out)
+
+    def log_message(self, *a):
+        pass
+
+
+def test_reasoning_model_param_quirks_self_correct(monkeypatch):
+    monkeypatch.setattr(ChatClient, "_learned_token_param", {})
+    monkeypatch.setattr(ChatClient, "_learned_drop", {})
+    _StrictReasoningAPI.bodies = []
+    srv = HTTPServer(("127.0.0.1", 0), _StrictReasoningAPI)
+    threading.Thread(target=srv.serve_forever, daemon=True).start()
+    try:
+        cfg = _cfg(base_url=f"http://127.0.0.1:{srv.server_port}/v1", temperature=0.4)
+        client = ChatClient(cfg)
+        # a relay alias the name heuristic can't recognise → must learn from the 400
+        res = client.chat(model="my-relay-reasoner", messages=[], tools=None, stage="t")
+        assert res.message["content"] == "ok"
+        last = _StrictReasoningAPI.bodies[-1]
+        assert "max_completion_tokens" in last and "max_tokens" not in last and "temperature" not in last
+        n = len(_StrictReasoningAPI.bodies)
+        client.chat(model="my-relay-reasoner", messages=[], tools=None, stage="t")
+        assert len(_StrictReasoningAPI.bodies) == n + 1      # learned: no wasted 400s next time
+    finally:
+        srv.shutdown()
+
+
+def test_token_param_picked_by_model_name():
+    c = ChatClient(_cfg())
+    assert c._token_param("gpt-5") == "max_completion_tokens"
+    assert c._token_param("openai/gpt-5-mini") == "max_completion_tokens"
+    assert c._token_param("o4-mini") == "max_completion_tokens"
+    assert c._token_param("gpt-4.1") == "max_tokens"
+    assert ChatClient(_cfg(token_param="max_tokens"))._token_param("gpt-5") == "max_tokens"
