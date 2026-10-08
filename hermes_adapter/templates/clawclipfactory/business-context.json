@@ -55,14 +55,14 @@
     "services": [
       {
         "slug": "oem-custom",
-        "url": "https://clawclipfactory.com/oem-custom/",
+        "url": "https://clawclipfactory.com/custom-claw-clips/",
         "positioning": "Custom claw clip manufacturing: your design, colors, logo and packaging, made in our own injection-molding factory.",
         "persona": "Brand owners, importers and wholesalers sourcing private-label claw clips",
-        "distinct_value_prop": "Factory-direct pricing with in-house molds, samples before bulk, and export-ready packaging",
+        "distinct_value_prop": "Direct from our injection-molding factory: samples before bulk orders, custom colors, logo and packaging.",
         "own_page_cta_copy": "Get a Quote"
       }
     ],
-    "fallback_url": "https://clawclipfactory.com/contact/",
+    "fallback_url": "https://clawclipfactory.com/request-a-quote/",
     "constraints": {
       "no_person_blocks": true,
       "tone": "B2B, factual, no hype, no fake urgency",
@@ -74,12 +74,12 @@
     "enabled": true,
     "placements": ["mid", "end"],
     "heading": "Talk to the factory",
-    "target_url": "https://clawclipfactory.com/oem-custom/"
+    "target_url": "https://clawclipfactory.com/custom-claw-clips/"
   },
 
   "article_signature": {
     "author": "TODO: e.g. the Jiahe production & export team",
-    "contact_url": "https://clawclipfactory.com/contact/",
+    "contact_url": "https://clawclipfactory.com/request-a-quote/",
     "cta_clause": "Need custom claw clips? Send us your design or reference photos for a quote."
   },
 
