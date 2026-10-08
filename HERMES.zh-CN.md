@@ -125,7 +125,9 @@ image:
       credential: openai                  # 读 credentials/openai.key
       model: gpt-image-2
 cost_limits:                    # 注意键名：原 README 写的 per_article/daily 不会被读取，代码读的是下面这些
-  per_article_usd: 3.0          # 单次脚本调用（研究、生图等）的预估上限
+  per_article_usd: 8.0          # 单次脚本调用（研究、生图等）的预估上限。
+                                # 生图会把整批图按 OpenAI 官方 4K 高质量价（约 $1.64/张）预估，
+                                # 中转站实际便宜得多。设成 3.0 时 2 张图（$3.28）就会被拦截、一张都不生成。
   per_image_batch_usd: 6.0      # 一批图片的上限
   daily_total_usd: 40.0         # 每天总花费上限：包括 adapter 记入账本的大模型花费，超了会拦截脚本调用
 ```
