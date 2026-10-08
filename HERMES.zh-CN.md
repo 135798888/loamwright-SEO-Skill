@@ -20,6 +20,20 @@
 
 ---
 
+## 需要哪些 API
+
+| API | 用途 | 是否必需 | 密钥放哪里 |
+|---|---|---|---|
+| 中转站大模型（OpenAI 兼容） | 所有写作、研究、核查、审稿 agent | 必需 | `~/.xuanran-seo/llm.yaml` |
+| Tavily | 研究阶段：深度研究、搜索、抓取竞品页面 | 必需 | `credentials/tavily.key` 或 `TAVILY_API_KEY` |
+| SerpApi | 真实 Google 搜索结果特征（PAA、AI 概览等） | 实际上必需（研究阶段要求） | `credentials/serpapi.key` 或 `SERPAPI_KEY` |
+| 生图（二选一或都配） | 封面和配图 | 要图就必需 | 见第 3 步 |
+| WordPress 应用密码 | 发布草稿 + 写 SEOPress 字段 | 必需 | `credentials/wordpress/clawclipfactory.json` |
+| Crossref | 查学术来源 | 免费，无需 key（建议设 `CROSSREF_MAILTO=你的邮箱`） | 环境变量 |
+| Bing IndexNow / GSC | 发布后通知收录 | 可选（草稿阶段用不到） | — |
+
+文字类质量检查（EEAT、引用、AI 味评分等）都是本地规则计算，不调用额外的模型。**Gemini 在文章流水线里只用于生图**，不需要 Gemini 文字模型。
+
 ## 第 1 步：服务器环境
 
 需要 Python **3.11 或更高**。
@@ -59,25 +73,35 @@ python -m hermes_adapter.run_article --check
 mkdir -p ~/.xuanran-seo/credentials/wordpress
 echo "tvly-你的key"   > ~/.xuanran-seo/credentials/tavily.key     # 必需：研究阶段搜索
 echo "你的serpapi key" > ~/.xuanran-seo/credentials/serpapi.key    # 强烈建议：真实 SERP 数据
-echo "sk-生图用的key"  > ~/.xuanran-seo/credentials/openai.key     # 生图（不要图可跳过）
+echo "Vertex快速模式key" > ~/.xuanran-seo/credentials/vertex-gemini.key  # 生图首选：Gemini
+echo "sk-中转站key"  > ~/.xuanran-seo/credentials/openai.key     # 生图备选：中转站 gpt-image-2
 chmod 600 ~/.xuanran-seo/credentials/*.key
 ```
 
-**生图走中转站**：编辑 `~/.xuanran-seo/config.yaml`，加上：
+**生图**：编辑 `~/.xuanran-seo/config.yaml`。下面两个服务商按顺序尝试，第一个失败自动换第二个，只配一个也行：
 
 ```yaml
 image:
   default_mode: realtime
-  model: gpt-image-2            # 填中转站里的生图模型名，必须支持 4K 尺寸（见下方说明）
   providers:
-    - name: relay
+    - name: vertex-gemini                 # 首选：Gemini 3 Pro Image（原插件实测过 4K）
+      protocol: vertex_gemini
+      base_url: https://aiplatform.googleapis.com/v1/publishers/google/models
+      credential: vertex-gemini           # 读 credentials/vertex-gemini.key 或 VERTEX_GEMINI_API_KEY
+      model: gemini-3-pro-image-preview
+    - name: relay                         # 备选：中转站的 gpt-image-2
       base_url: https://你的中转站/v1
-      credential: openai        # 用上面的 openai.key
+      credential: openai                  # 读 credentials/openai.key
+      model: gpt-image-2
 cost_limits:                    # 注意键名：原 README 写的 per_article/daily 不会被读取，代码读的是下面这些
   per_article_usd: 3.0          # 单次脚本调用（研究、生图等）的预估上限
   per_image_batch_usd: 6.0      # 一批图片的上限
   daily_total_usd: 40.0         # 每天总花费上限：包括 adapter 记入账本的大模型花费，超了会拦截脚本调用
 ```
+
+> ⚠ Gemini 的 key 必须是 **Vertex AI 快速模式（Express mode）** 的 API key：原插件直接请求 `aiplatform.googleapis.com`。Google AI Studio 的 key（`AIza` 开头）在这个地址不能用。如果你只有 AI Studio 的 key，或者中转站提供 Gemini 生图，告诉我，我加一个对应的接入方式。
+>
+> 不要用 `gemini-3.1-flash-image-preview`（Nano Banana 2）：已有公开报告它在 Vertex 上会忽略 4K 设置、只返回约 1K 的图，而原插件要求 4K。
 
 > ⚠ 原插件生图**固定请求 4K 尺寸**（如 3840x2160），只有 gpt-image-2 或 Gemini 3 Pro Image 这类模型支持。中转站只有 gpt-image-1 / dall-e-3 的话会报尺寸错误。这种情况先告诉我，我把尺寸改成可配置。`--image-count 0`（纯文字）原插件允许，但我还没验证它能完整走完后面的图片检查。
 >
