@@ -74,6 +74,17 @@ def environment_error(r: dict[str, Any]) -> str | None:
     return None
 
 
+def _error_detail(r: dict[str, Any]) -> str:
+    """The runner's one-line verdict plus what the command itself printed — a BASH
+    stage's real reason (e.g. the publisher's JSON `error`) is only in its output."""
+    parts = [str(r.get("detail") or "")[:800]]
+    for key in ("stdout_tail", "stderr_tail"):
+        tail = str(r.get(key) or "").strip()
+        if tail:
+            parts.append(f"--- {key} ---\n{tail[-1200:]}")
+    return "\n".join(parts)
+
+
 _IMAGE_JOIN = "image-pipeline-join"
 _IMAGE_FORK_TIMEOUT_S = 45 * 60
 
@@ -234,7 +245,7 @@ class Driver:
 
                 if action == "ERROR":
                     if not self._handle_error(r):
-                        return self._finish("failed", str(r.get("detail"))[:1500], stage)
+                        return self._finish("failed", _error_detail(r), stage)
                     continue
 
                 if action == "WAIT" and stage == _IMAGE_JOIN:

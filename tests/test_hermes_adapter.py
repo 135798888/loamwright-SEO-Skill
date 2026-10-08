@@ -668,3 +668,19 @@ def test_live_fork_is_waited_on_not_rerun(ws, monkeypatch):
     rep = drv.Driver(_cfg(), tid, pipeline_drive=lambda *a, **k: next(seq)).run()
     assert rep.status == "complete"
     assert not any(e["kind"] == "image_fork_rerun" for e in rep.events)
+
+
+def test_bash_stage_failure_report_carries_the_commands_own_output(ws, monkeypatch):
+    """2026-10-08: the report said only "verify failed: ['publish-result.json']"; the
+    publisher's actual error was in its stdout and never reached the operator."""
+    from hermes_adapter import driver as drv
+    tid, d = ws
+    _make_state(d, tid)
+    monkeypatch.setattr(drv.time, "sleep", lambda s: None)
+    rep = drv.Driver(_cfg(), tid, pipeline_drive=lambda *a, **k: {
+        "action": "ERROR", "stage": "wordpress-publisher",
+        "detail": "BASH stage 'wordpress-publisher' ran but verify failed: ['publish-result.json']",
+        "stdout_tail": '{"success": false, "error": "Post creation failed: 403 rest_cannot_create"}',
+        "stderr_tail": ""}).run()
+    assert rep.status == "failed"
+    assert "rest_cannot_create" in rep.detail and "publish-result.json" in rep.detail
