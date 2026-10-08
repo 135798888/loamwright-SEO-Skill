@@ -90,7 +90,9 @@ python -m hermes_adapter.run_article --check
 | `advisory`（建议先用这个） | 运行并记录到 `second-opinion.json` 和 Telegram 通知，**不拦截** |
 | `block` | 不通过 → 按它指出的问题自动修复 → 再判一次，仍不通过就**停在发布前**。返回结果读不懂也算不通过 |
 
-建议前 10 篇左右用 `advisory`，对照草稿看它判得准不准，准的话再改成 `block`。模型用中转站里的 Gemini（和写手不同家），先试 `gemini-3.1-pro-low`；也可以和列表里最新的 flash 版本各跑几篇比较。记得在 `prices` 里填上它的单价。
+建议前 10 篇左右用 `advisory`，对照草稿看它判得准不准，准的话再改成 `block`。模型用中转站里的 Gemini（和写手不同家），默认 `gemini-3.8-flash-high`，备选 `gemini-3.1-pro-low`。记得在 `prices` 里填上它的单价。
+
+部署后先跑 `python -m hermes_adapter.run_article --check`：它会逐个测试每个配置的模型能否调用（带工具调用），并给第二意见模型一篇故意编造数据的小样文，确认它能返回可解析的结论、并且能识别出编造。
 
 ## 第 3 步：其他 API 密钥
 

@@ -54,24 +54,53 @@ def _progress(ev: dict) -> None:
               file=sys.stderr, flush=True)
 
 
+_NOOP_TOOL = [{"type": "function", "function": {
+    "name": "noop", "description": "no-op", "parameters": {"type": "object", "properties": {}}}}]
+
+
 def _check(cfg) -> int:
+    """Ping every distinct configured model (with a tool attached — agents need tool calling),
+    and give the second-opinion model a tiny judging task to prove it returns a usable verdict."""
     client = ChatClient(cfg)
-    try:
-        res = client.chat(model=cfg.model_for("default"),
-                          messages=[{"role": "user", "content": "Reply with the single word: pong"}],
-                          tools=[{"type": "function", "function": {
-                              "name": "noop", "description": "no-op",
-                              "parameters": {"type": "object", "properties": {}}}}],
-                          stage="check", max_attempts=2)
-    except Exception as e:  # noqa: BLE001
-        print(json.dumps({"ok": False, "error": str(e)}, ensure_ascii=False))
-        return 2
     roles = sorted(set(cfg.models) | {"default"})
-    print(json.dumps({"ok": True, "endpoint": cfg.base_url, "reply": (res.message.get("content") or "")[:50],
-                      "models": {r: cfg.model_for(r) for r in roles},
-                      "unpriced": sorted({cfg.model_for(r) for r in roles} - set(cfg.prices))},
-                     ensure_ascii=False, indent=2))
-    return 0
+    out: dict = {"endpoint": cfg.base_url, "models": {r: cfg.model_for(r) for r in roles},
+                 "model_check": {}}
+    for model in sorted({cfg.model_for(r) for r in roles}):
+        try:
+            client.chat(model=model, stage="check", max_attempts=2, tools=_NOOP_TOOL,
+                        messages=[{"role": "user", "content": "Reply with the single word: pong"}])
+            out["model_check"][model] = "ok"
+        except Exception as e:  # noqa: BLE001
+            out["model_check"][model] = f"ERROR: {e}"[:300]
+    if cfg.second_opinion_mode != "off":
+        from hermes_adapter.second_opinion import _SYSTEM, parse_verdict
+        so = {"mode": cfg.second_opinion_mode, "model": cfg.second_opinion_model}
+        try:
+            res = client.chat(model=cfg.second_opinion_model, stage="check", max_attempts=2, tools=None,
+                              messages=[{"role": "system", "content": _SYSTEM},
+                                        {"role": "user", "content":
+                                         "CRITERIA:\n1. FACTS: no invented numbers.\n\nARTICLE:\n"
+                                         "## Claw clips\n\nOur factory has made claw clips since 1850 "
+                                         "and ships 9 billion units a day."}])
+            v = parse_verdict(res.message.get("content") or "")
+            so["result"] = ("ok — returned a valid verdict" if v else
+                            "ERROR: reply was not valid verdict JSON: "
+                            + (res.message.get("content") or "")[:200])
+            if v:
+                so["sample_verdict"] = "FAIL (expected)" if not v["criteria"][0]["pass"] else \
+                    "PASS — it missed obviously invented numbers; consider another model"
+        except Exception as e:  # noqa: BLE001
+            so["result"] = f"ERROR: {e}"[:300]
+        out["second_opinion"] = so
+    priced = set(cfg.prices)
+    used = {cfg.model_for(r) for r in roles} | ({cfg.second_opinion_model}
+                                                 if cfg.second_opinion_mode != "off" else set())
+    out["unpriced"] = sorted(m for m in used if m and m not in priced)
+    ok = all(v == "ok" for v in out["model_check"].values()) and \
+        str(out.get("second_opinion", {}).get("result", "ok")).startswith("ok")
+    out["ok"] = ok
+    print(json.dumps(out, ensure_ascii=False, indent=2))
+    return 0 if ok else 2
 
 
 def main() -> int:

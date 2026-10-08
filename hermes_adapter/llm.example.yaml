@@ -66,7 +66,7 @@ limits:
 # mode: off | advisory (record + report only) | block (FAIL → repair → re-judge; still FAIL → stop)
 second_opinion:
   mode: advisory
-  model: gemini-3.1-pro-low        # exact name from your relay
+  model: gemini-3.8-flash-high     # exact name from your relay (alt: gemini-3.1-pro-low)
   max_rounds: 2                    # block mode only
   # criteria:                      # optional: replace the 4 default criteria (see second_opinion.py)
   #   - "FACTS: ..."
