@@ -95,10 +95,45 @@ class ChatResult:
     completion_tokens: int
 
 
+_REASONING_PREFIXES = ("gpt-5", "o1", "o3", "o4")
+
+
 class ChatClient:
+    # model -> token parameter learned from a 400 (shared across clients/threads)
+    _learned_token_param: dict[str, str] = {}
+    _learned_drop: dict[str, set[str]] = {}
+
     def __init__(self, cfg: LLMConfig, tracker: CostTracker | None = None):
         self.cfg = cfg
         self.tracker = tracker
+
+    def _token_param(self, model: str) -> str:
+        if self.cfg.token_param in ("max_tokens", "max_completion_tokens"):
+            return self.cfg.token_param
+        if model in self._learned_token_param:
+            return self._learned_token_param[model]
+        bare = model.split("/")[-1].lower()           # "openai/gpt-5" style relay names
+        return "max_completion_tokens" if bare.startswith(_REASONING_PREFIXES) else "max_tokens"
+
+    def _adapt_after_400(self, model: str, body: dict[str, Any], text: str) -> bool:
+        """Fix a parameter the endpoint rejected; True if the request should be re-sent."""
+        t = text.lower()
+        if "max_completion_tokens" in t and "max_tokens" in body:
+            body["max_completion_tokens"] = body.pop("max_tokens")
+            self._learned_token_param[model] = "max_completion_tokens"
+            return True
+        if "max_completion_tokens" in body and ("unrecognized" in t or "unknown" in t or
+                                                "not supported" in t) and "max_completion_tokens" in t:
+            body["max_tokens"] = body.pop("max_completion_tokens")
+            self._learned_token_param[model] = "max_tokens"
+            return True
+        for param in ("temperature", "reasoning_effort"):
+            if param in body and param in t and ("unsupported" in t or "not support" in t
+                                                 or "only the default" in t or "unrecognized" in t):
+                body.pop(param)
+                self._learned_drop.setdefault(model, set()).add(param)
+                return True
+        return False
 
     def _url(self) -> str:
         base = self.cfg.base_url
@@ -114,13 +149,17 @@ class ChatClient:
         body: dict[str, Any] = {
             "model": model,
             "messages": messages,
-            "max_tokens": self.cfg.max_output_tokens,
+            self._token_param(model): self.cfg.max_output_tokens,
         }
         if tools:
             body["tools"] = tools
             body["tool_choice"] = "auto"
-        if self.cfg.temperature is not None:
+        dropped = self._learned_drop.get(model, set())
+        if self.cfg.temperature is not None and "temperature" not in dropped:
             body["temperature"] = self.cfg.temperature
+        if self.cfg.reasoning_effort and "reasoning_effort" not in dropped:
+            body["reasoning_effort"] = self.cfg.reasoning_effort
+        param_fixes = 0
         headers = {"Authorization": f"Bearer {self.cfg.api_key}",
                    "Content-Type": "application/json", **self.cfg.extra_headers}
 
@@ -132,6 +171,9 @@ class ChatClient:
                 if r.status_code in _TRANSIENT_STATUS:
                     last_err = f"HTTP {r.status_code}: {r.text[:300]}"
                     raise _Retry()
+                if r.status_code == 400 and param_fixes < 3 and self._adapt_after_400(model, body, r.text):
+                    param_fixes += 1
+                    continue  # re-send immediately with the corrected parameter
                 if r.status_code >= 400:
                     raise LLMError(f"HTTP {r.status_code} from LLM endpoint: {r.text[:800]}")
                 data = r.json()

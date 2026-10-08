@@ -14,11 +14,25 @@
 | `hermes_adapter/agent.py` + `tools.py` | 用中转站模型跑 `agents/*.md` 里的每个子 agent，**只给它定义里声明的工具**（写手只有 Read/Write，不能联网），写 JSON 时自动做 schema 校验，跑命令前做成本检查 |
 | `hermes_adapter/run_article.py` | 命令行入口（Hermes / cron 调这个） |
 | `hermes_adapter/bootstrap_project.py` + `templates/clawclipfactory/` | 用"填表"代替交互式 `/init`，工厂事实只能来自你填的内容 |
-| SEOPress 适配 | 新增 MU 插件 `install/wordpress-mu-plugin/xuanran-seopress-rest-bridge.php`；`wp_publisher` 写 SEOPress 字段并回读校验；`verify_post` 的草稿检查支持 SEOPress |
+| SEOPress 适配 | 新增 `scripts/wordpress/seopress_api.py`，直接调用 SEOPress 自带的 REST API 写入并回读；`verify_post` 的草稿检查改为通过同一接口读取（原版只认 RankMath，SEOPress 草稿会永远校验失败） |
 | `hermes_adapter/hermes/seo-article/SKILL.md` | 给 Hermes 用的技能说明 |
-| `tests/` | 22 个离线测试（含真实编排器的全链路测试），不花钱 |
+| `tests/` | 37 个离线测试（含真实编排器的全链路测试），不花钱 |
 
 ---
+
+## 需要哪些 API
+
+| API | 用途 | 是否必需 | 密钥放哪里 |
+|---|---|---|---|
+| 中转站大模型（OpenAI 兼容） | 所有写作、研究、核查、审稿 agent | 必需 | `~/.xuanran-seo/llm.yaml` |
+| Tavily | 研究阶段：深度研究、搜索、抓取竞品页面 | 必需 | `credentials/tavily.key` 或 `TAVILY_API_KEY` |
+| SerpApi | 真实 Google 搜索结果特征（PAA、AI 概览等） | 实际上必需（研究阶段要求） | `credentials/serpapi.key` 或 `SERPAPI_KEY` |
+| 生图（二选一或都配） | 封面和配图 | 要图就必需 | 见第 3 步 |
+| WordPress 应用密码 | 发布草稿 + 写 SEOPress 字段 | 必需 | `credentials/wordpress/clawclipfactory.json` |
+| Crossref | 查学术来源 | 免费，无需 key（建议设 `CROSSREF_MAILTO=你的邮箱`） | 环境变量 |
+| Bing IndexNow / GSC | 发布后通知收录 | 可选（草稿阶段用不到） | — |
+
+文字类质量检查（EEAT、引用、AI 味评分等）都是本地规则计算，不调用额外的模型。**Gemini 在文章流水线里只用于生图**，不需要 Gemini 文字模型。
 
 ## 第 1 步：服务器环境
 
@@ -30,7 +44,7 @@ git clone https://github.com/135798888/loamwright-SEO-Skill.git loamwright-seo-s
 cd loamwright-seo-skill
 python3 -m venv .venv && source .venv/bin/activate
 pip install -r requirements.txt
-python -m pytest tests/ -q        # 应显示 22 passed
+python -m pytest tests/ -q        # 应显示 37 passed
 ```
 
 > 以后每次更新：`cd ~/loamwright-seo-skill && git pull`
@@ -51,6 +65,35 @@ python -m hermes_adapter.run_article --check
 - 写手（writer）、审稿（reviewer）、润色（humanizer）建议用最强的模型，这三个决定文章质量。
 - `prices` 填中转站的实际单价（美元/百万 token），用于单篇预算上限 `max_llm_usd_per_article`。没填单价的模型按 0 计算，报告里会提示。
 
+### 只用 ChatGPT（OpenAI）模型
+
+可以全部用 GPT 模型（包括生图用 gpt-image-2）。`llm.yaml` 里参考 `llm.example.yaml` 的 "ChatGPT-only setup" 段：写手、事实核查、去 AI 味、审稿这 4 个决定质量的角色用中转站里最强的 GPT，其他用 mini 版省钱。注意：
+
+- GPT-5 这类推理模型不接受 `max_tokens`，只接受 `max_completion_tokens`，也不接受自定义 temperature。adapter 会按模型名自动选择；遇到识别不了的中转站别名，会根据接口返回的报错自动改参数重试，并记住，下次不再出错。
+- 推理模型的"思考"也算在输出 token 里，`max_output_tokens` 建议调到 32000，否则长段落可能写一半被截断。
+- 写手和审稿人是同一家的模型，少了一层跨模型交叉检查。审稿人每次都是全新上下文、看不到前面的过程，偏向会小一些，但比不上换一家模型。
+
+### Gemini 第二意见（跨模型复审）
+
+原作者设计过"用另一家模型复查"，但从没接进流水线。现在它是真正会执行的一步：在独立审稿人（第 4 道质量门）通过之后、发布之前，把草稿交给另一家模型，按 4 条标准逐条判断：
+
+1. **事实**：有没有工厂资料里没有、或互相矛盾的说法（MOQ、交期、产能、认证等），有没有像编造的数据
+2. **采购价值**：对批发商、品牌方是否真的有用，而不是泛泛的消费者科普
+3. **关键词意图**：是否在文章前部就回答了搜索意图
+4. **自然度**：读起来像不像模板化的 AI 文章
+
+`llm.yaml` 里的 `second_opinion` 段：
+
+| mode | 行为 |
+|---|---|
+| `off` | 不运行 |
+| `advisory`（建议先用这个） | 运行并记录到 `second-opinion.json` 和 Telegram 通知，**不拦截** |
+| `block` | 不通过 → 按它指出的问题自动修复 → 再判一次，仍不通过就**停在发布前**。返回结果读不懂也算不通过 |
+
+建议前 10 篇左右用 `advisory`，对照草稿看它判得准不准，准的话再改成 `block`。模型用中转站里的 Gemini（和写手不同家），默认 `gemini-3.8-flash-high`，备选 `gemini-3.1-pro-low`。记得在 `prices` 里填上它的单价。
+
+部署后先跑 `python -m hermes_adapter.run_article --check`：它会逐个测试每个配置的模型能否调用（带工具调用），并给第二意见模型一篇故意编造数据的小样文，确认它能返回可解析的结论、并且能识别出编造。
+
 ## 第 3 步：其他 API 密钥
 
 都放在 `~/.xuanran-seo/credentials/`（仓库外，不会被提交）：
@@ -59,25 +102,35 @@ python -m hermes_adapter.run_article --check
 mkdir -p ~/.xuanran-seo/credentials/wordpress
 echo "tvly-你的key"   > ~/.xuanran-seo/credentials/tavily.key     # 必需：研究阶段搜索
 echo "你的serpapi key" > ~/.xuanran-seo/credentials/serpapi.key    # 强烈建议：真实 SERP 数据
-echo "sk-生图用的key"  > ~/.xuanran-seo/credentials/openai.key     # 生图（不要图可跳过）
+echo "Vertex快速模式key" > ~/.xuanran-seo/credentials/vertex-gemini.key  # 生图首选：Gemini
+echo "sk-中转站key"  > ~/.xuanran-seo/credentials/openai.key     # 生图备选：中转站 gpt-image-2
 chmod 600 ~/.xuanran-seo/credentials/*.key
 ```
 
-**生图走中转站**：编辑 `~/.xuanran-seo/config.yaml`，加上：
+**生图**：编辑 `~/.xuanran-seo/config.yaml`。下面两个服务商按顺序尝试，第一个失败自动换第二个，只配一个也行：
 
 ```yaml
 image:
   default_mode: realtime
-  model: gpt-image-2            # 填中转站里的生图模型名，必须支持 4K 尺寸（见下方说明）
   providers:
-    - name: relay
+    - name: vertex-gemini                 # 首选：Gemini 3 Pro Image（原插件实测过 4K）
+      protocol: vertex_gemini
+      base_url: https://aiplatform.googleapis.com/v1/publishers/google/models
+      credential: vertex-gemini           # 读 credentials/vertex-gemini.key 或 VERTEX_GEMINI_API_KEY
+      model: gemini-3-pro-image-preview
+    - name: relay                         # 备选：中转站的 gpt-image-2
       base_url: https://你的中转站/v1
-      credential: openai        # 用上面的 openai.key
+      credential: openai                  # 读 credentials/openai.key
+      model: gpt-image-2
 cost_limits:                    # 注意键名：原 README 写的 per_article/daily 不会被读取，代码读的是下面这些
   per_article_usd: 3.0          # 单次脚本调用（研究、生图等）的预估上限
   per_image_batch_usd: 6.0      # 一批图片的上限
   daily_total_usd: 40.0         # 每天总花费上限：包括 adapter 记入账本的大模型花费，超了会拦截脚本调用
 ```
+
+> ⚠ Gemini 的 key 必须是 **Vertex AI 快速模式（Express mode）** 的 API key：原插件直接请求 `aiplatform.googleapis.com`。Google AI Studio 的 key（`AIza` 开头）在这个地址不能用。如果你只有 AI Studio 的 key，或者中转站提供 Gemini 生图，告诉我，我加一个对应的接入方式。
+>
+> 不要用 `gemini-3.1-flash-image-preview`（Nano Banana 2）：已有公开报告它在 Vertex 上会忽略 4K 设置、只返回约 1K 的图，而原插件要求 4K。
 
 > ⚠ 原插件生图**固定请求 4K 尺寸**（如 3840x2160），只有 gpt-image-2 或 Gemini 3 Pro Image 这类模型支持。中转站只有 gpt-image-1 / dall-e-3 的话会报尺寸错误。这种情况先告诉我，我把尺寸改成可配置。`--image-count 0`（纯文字）原插件允许，但我还没验证它能完整走完后面的图片检查。
 >
@@ -92,15 +145,11 @@ EOF
 chmod 600 ~/.xuanran-seo/credentials/wordpress/clawclipfactory.json
 ```
 
-## 第 4 步：WordPress 装 SEOPress 桥接插件
+## 第 4 步：确认 SEOPress 接口可用（不用装插件）
 
-把 `install/wordpress-mu-plugin/xuanran-seopress-rest-bridge.php` 上传到网站的
-`wp-content/mu-plugins/` 目录（没有这个目录就新建）。MU 插件不用启用，上传即生效。
+SEOPress 免费版自带 REST API，流水线直接用你的应用密码调用它写入 SEO 标题、描述、关键词和 robots。网站上不需要额外装任何东西。
 
-验证：浏览器打开 `https://clawclipfactory.com/wp-json/xuanran/v1/seopress-bridge`，看到
-`"bridge_active": true` 和 `"seopress_active": true` 就对了。
-
-> 没装这个插件，文章还是能发成草稿，但 SEO 标题、描述、关键词写不进 SEOPress，流水线最后的线上校验会失败。
+只需确认两点：SEOPress 已启用；应用密码对应的 WordPress 用户是"编辑"或"管理员"。第 5 步的 `--check-wp` 会自动检查这两项。
 
 ## 第 5 步：填工厂资料并初始化项目
 
@@ -112,7 +161,7 @@ chmod 600 ~/.xuanran-seo/credentials/wordpress/clawclipfactory.json
 python -m hermes_adapter.bootstrap_project --from hermes_adapter/templates/clawclipfactory --check-wp
 ```
 
-返回 `"ok": true` 且 `seopress_bridge: true` 就好了。还有 TODO 没填，它会列出来并拒绝安装。
+返回 `"ok": true` 且 `seo_plugin: "seopress"` 就好了。还有 TODO 没填，它会列出来并拒绝安装。
 
 ## 第 6 步：手动试跑一篇（第一次建议盯着看）
 
@@ -136,14 +185,36 @@ python -m hermes_adapter.run_article --resume <任务ID>
 
 ## 第 7 步：接入 Hermes
 
-把技能复制到 Hermes 的技能目录（下面是默认路径，你的 Hermes 版本如果不同，以它的文档为准）：
+**7.1 让 Hermes 能读到 API 密钥。** Hermes 在后台执行命令时，通常不会加载 `~/.bashrc`，所以只设置 `export LW_LLM_API_KEY` 不一定生效。最稳妥的做法是把中转站的 key 直接写进 `~/.xuanran-seo/llm.yaml`（这个文件在仓库外，不会被提交）：
+
+```yaml
+api_key: sk-你的中转站key        # 写这一行，删掉或注释掉 api_key_env 那行
+```
+
+```bash
+chmod 600 ~/.xuanran-seo/llm.yaml
+```
+
+**7.2 安装技能。** Hermes 的自定义技能放在 `~/.hermes/skills/` 下，复制进去即可，不需要注册：
 
 ```bash
 mkdir -p ~/.hermes/skills
-cp -r hermes_adapter/hermes/seo-article ~/.hermes/skills/
+cp -r ~/loamwright-seo-skill/hermes_adapter/hermes/seo-article ~/.hermes/skills/
+hermes skills list | grep seo-article      # 能看到就说明装上了
 ```
 
-之后在 Telegram 里对 Hermes 说"写一篇关于 custom claw clips wholesale 的 SEO 文章"，它会在后台启动任务、过一会儿查看进度、最后把草稿链接发给你。
+技能只在**新会话**生效：在 Hermes 里新开对话，或发送 `/reset`。
+
+> 仓库以后 `git pull` 更新时，技能文件可能也有变化，再执行一次上面的 `cp` 即可。
+
+**7.3 使用。** 在 Telegram（或其他接入 Hermes 的地方）发：
+
+- `/seo-article 写一篇关于 custom claw clips wholesale 的文章`
+- 或直接说"帮我写一篇关于 acetate claw clips 的 SEO 文章"
+- "把 keywords.txt 里下一个关键词写了"
+- "刚才那篇文章跑得怎么样了？"
+
+Hermes 会在后台启动任务，过一段时间查看日志，跑完后把草稿链接、文章 ID 和花费告诉你。一篇大约 30–90 分钟，期间可以随时问进度。
 
 ## 第 8 步：定时自动跑（每天一篇）
 
@@ -151,7 +222,7 @@ cp -r hermes_adapter/hermes/seo-article ~/.hermes/skills/
 
 ```cron
 CRON_TZ=Asia/Shanghai
-0 9 * * * cd ~/loamwright-seo-skill && LW_LLM_API_KEY=你的key .venv/bin/python -m hermes_adapter.run_article --project clawclipfactory --queue keywords.txt >> logs/cron.log 2>&1
+0 9 * * * cd ~/loamwright-seo-skill && .venv/bin/python -m hermes_adapter.run_article --project clawclipfactory --queue keywords.txt >> logs/cron.log 2>&1
 ```
 
 - 每次只取一个关键词，跑完记到 `keywords.txt.done`（含状态和任务 ID）。

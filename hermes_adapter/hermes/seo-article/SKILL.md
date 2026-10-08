@@ -1,5 +1,6 @@
 ---
 name: seo-article
+version: 1.0.0
 description: Write and upload an SEO blog article (as a WordPress DRAFT) for clawclipfactory.com using the loamwright pipeline on this server. Use when the user asks to write/produce an SEO article or blog post for a keyword, to process the keyword queue, to check on a running article, or to resume a failed one.
 ---
 
@@ -7,7 +8,8 @@ description: Write and upload an SEO blog article (as a WordPress DRAFT) for cla
 
 The pipeline lives in a git checkout on this server. Default location:
 `~/loamwright-seo-skill` (if it is elsewhere, use that path everywhere below).
-It is a long-running, multi-stage job (typically 30–90 minutes per article). You do NOT write
+Always run it with the checkout's own virtualenv Python: `.venv/bin/python` (the system
+`python` does not have the dependencies). It is a long-running, multi-stage job (typically 30–90 minutes per article). You do NOT write
 the article yourself — you start the job, monitor it, and report the result.
 
 ## Rules
@@ -23,19 +25,19 @@ the article yourself — you start the job, monitor it, and report the result.
 
 ```bash
 cd ~/loamwright-seo-skill && mkdir -p logs && \
-nohup python -m hermes_adapter.run_article --project clawclipfactory \
+nohup .venv/bin/python -m hermes_adapter.run_article --project clawclipfactory \
   --keyword "KEYWORD HERE" > logs/article-$(date +%Y%m%d-%H%M%S).log 2>&1 &
 echo started
 ```
 
-Optional flags: `--secondary "kw2,kw3"`, `--image-count 3` (0 = text only),
+Optional flags: `--secondary "kw2,kw3"`, `--image-count 3`,
 `--word-count 2500`.
 
 ## Process the next keyword from the queue
 
 ```bash
 cd ~/loamwright-seo-skill && mkdir -p logs && \
-nohup python -m hermes_adapter.run_article --project clawclipfactory \
+nohup .venv/bin/python -m hermes_adapter.run_article --project clawclipfactory \
   --queue keywords.txt > logs/queue-$(date +%Y%m%d-%H%M%S).log 2>&1 &
 ```
 
@@ -64,12 +66,12 @@ Parse the final JSON line. For each entry in `articles`:
 After the cause is fixed (e.g. an API key topped up), finished stages are kept:
 
 ```bash
-cd ~/loamwright-seo-skill && nohup python -m hermes_adapter.run_article \
+cd ~/loamwright-seo-skill && nohup .venv/bin/python -m hermes_adapter.run_article \
   --resume TASK_ID > logs/resume-$(date +%Y%m%d-%H%M%S).log 2>&1 &
 ```
 
 ## Health check
 
 ```bash
-cd ~/loamwright-seo-skill && python -m hermes_adapter.run_article --check
+cd ~/loamwright-seo-skill && .venv/bin/python -m hermes_adapter.run_article --check
 ```

@@ -670,7 +670,8 @@ def check_categories_not_uncategorized(post: dict) -> CheckResult:
     )
 
 
-def check_rankmath_meta(post: dict, expect_robots_index: bool = True, head_html: str | None = None) -> CheckResult:
+def check_rankmath_meta(post: dict, expect_robots_index: bool = True, head_html: str | None = None,
+                        seopress: dict | None = None) -> CheckResult:
     """Verify RankMath meta is correctly EMITTED in the rendered head (the SEO-relevant signal).
 
     2026-05-21 refactor: previously checked `post.meta.rank_math_*` from REST. That field is
@@ -708,20 +709,22 @@ def check_rankmath_meta(post: dict, expect_robots_index: bool = True, head_html:
             # Note: many SEO setups omit "index" word since it's the default;
             # only fail if explicit noindex is present.
         detail = f"rendered head check — {'; '.join(issues) if issues else 'title/canonical/description/robots all present'}"
-    elif any(str(k).startswith("_seopress_") for k in (post.get("meta") or {})):
-        # SEOPress site (keys exposed by xuanran-seopress-rest-bridge.php). SEOPress emits
-        # the canonical from the permalink when the field is empty, so it is not required;
-        # robots is inverted: "_seopress_robots_index" == "yes" means NOINDEX.
-        meta = post.get("meta", {})
-        if not meta.get("_seopress_titles_title"):
-            issues.append("_seopress_titles_title missing in REST meta")
-        if not meta.get("_seopress_titles_desc"):
-            issues.append("_seopress_titles_desc missing in REST meta")
-        if not meta.get("_seopress_analysis_target_kw"):
-            issues.append("_seopress_analysis_target_kw missing in REST meta")
-        if expect_robots_index and str(meta.get("_seopress_robots_index", "")).lower() == "yes":
-            issues.append("_seopress_robots_index is 'yes' (noindex) in REST meta")
-        detail = f"SEOPress REST meta check (no head fetched — draft post) — {'; '.join(issues) if issues else 'all set'}"
+    elif seopress is not None:
+        # SEOPress site, draft post: fields read through SEOPress's own authenticated
+        # REST API (scripts/wordpress/seopress_api.read_seopress — the same module the
+        # publisher writes with). SEOPress emits the canonical from the permalink when
+        # the field is empty, so canonical is not required. Focus keywords only feed
+        # SEOPress's on-page analysis (not a ranking signal), so they are reported, not
+        # required.
+        if not seopress.get("title"):
+            issues.append("SEOPress SEO title is empty")
+        if not seopress.get("description"):
+            issues.append("SEOPress meta description is empty")
+        if expect_robots_index and seopress.get("noindex"):
+            issues.append("SEOPress robots set to noindex")
+        kw_note = "" if seopress.get("target_kw") else " (target keywords not readable/empty)"
+        detail = (f"SEOPress API check (draft post) — "
+                  f"{'; '.join(issues) if issues else 'title/description set, indexable'}{kw_note}")
     else:
         # Fallback: legacy REST meta check
         meta = post.get("meta", {})
@@ -1381,7 +1384,14 @@ def verify_post(
     checks.append(check_no_hand_rolled_srcset(rendered))
     checks.append(check_no_orphan_markdown_bold(rendered))
     checks.append(check_no_claim_marker_leak(rendered))
-    checks.append(check_rankmath_meta(post, expect_robots_index=expect_robots_index, head_html=head_html))
+    seopress_fields = None
+    if head_html is None:
+        # Drafts have no public head. On SEOPress sites read the fields through
+        # SEOPress's own API (None on non-SEOPress sites → legacy REST-meta path).
+        from scripts.wordpress.seopress_api import read_seopress
+        seopress_fields = read_seopress(wp, post_id)
+    checks.append(check_rankmath_meta(post, expect_robots_index=expect_robots_index, head_html=head_html,
+                                      seopress=seopress_fields))
     checks.append(check_references_h2_real(rendered))
     checks.append(check_references_ol_followed(rendered, min_li=min_references_li))
     checks.append(check_article_signature_real(rendered, site_slug))

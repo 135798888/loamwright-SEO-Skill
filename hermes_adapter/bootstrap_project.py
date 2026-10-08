@@ -73,7 +73,7 @@ Created by hermes_adapter.bootstrap_project. Edit business-context.json, not thi
 
 - Business: {company.get('legal_name', '')} — B2B manufacturer; readers are wholesale buyers,
   brand owners and importers (North America, Europe, Australia). Write for procurement, not consumers.
-- SEO plugin: SEOPress (meta written through install/wordpress-mu-plugin/xuanran-seopress-rest-bridge.php).
+- SEO plugin: SEOPress (meta written through SEOPress's own REST API — scripts/wordpress/seopress_api.py).
 - Publish policy: DRAFT only. A human reviews and publishes.
 - references_required: true
 - Article signature author: {sig.get('author', 'our team')}; contact: {sig.get('contact_url', '')}
@@ -139,16 +139,24 @@ def install(template: Path, *, allow_todo: bool, force: bool) -> tuple[str, list
 
 
 def check_wp(slug: str) -> dict[str, Any]:
+    """Credentials work + SEOPress's own REST API is present (no MU-plugin needed)."""
     from scripts.wordpress.wp_client import WPClient
     try:
-        h = WPClient(slug).health_check()
+        wp = WPClient(slug)
+        h = wp.health_check()
+        me = wp.get("/wp/v2/users/me", params={"context": "edit"}).json_data or {}
     except Exception as e:  # noqa: BLE001
         return {"ok": False, "error": f"{type(e).__name__}: {e}"}
-    ok = bool(h.get("wp_rest")) and bool(h.get("seopress_bridge"))
+    roles = me.get("roles") or []
+    can_edit = bool(set(roles) & {"administrator", "editor"})
+    ok = bool(h.get("wp_rest")) and h.get("seo_plugin") == "seopress" and can_edit
+    hint = None
+    if h.get("seo_plugin") != "seopress":
+        hint = f"SEOPress REST API not detected (seo_plugin={h.get('seo_plugin')!r}) — is SEOPress active?"
+    elif not can_edit:
+        hint = f"WordPress user roles {roles} — the application-password user should be Editor or Administrator"
     return {"ok": ok, "wp_rest": h.get("wp_rest"), "seo_plugin": h.get("seo_plugin"),
-            "seopress_bridge": h.get("seopress_bridge"), "seopress_version": h.get("seopress_version"),
-            "hint": None if ok else (h.get("info", {}).get("seopress_bridge_error")
-                                     or h.get("info", {}).get("wp_error"))}
+            "user": me.get("slug"), "roles": roles, "hint": hint or h.get("info", {}).get("wp_error")}
 
 
 def main() -> int:
@@ -156,7 +164,7 @@ def main() -> int:
     ap.add_argument("--from", dest="template", type=Path, required=True)
     ap.add_argument("--allow-todo", action="store_true")
     ap.add_argument("--force", action="store_true", help="overwrite without .bak and regenerate CLAUDE.md")
-    ap.add_argument("--check-wp", action="store_true", help="test WordPress credentials + SEOPress bridge")
+    ap.add_argument("--check-wp", action="store_true", help="test WordPress credentials + SEOPress API")
     args = ap.parse_args()
     os.chdir(_ROOT)
     slug, notes = install(args.template.resolve(), allow_todo=args.allow_todo, force=args.force)
