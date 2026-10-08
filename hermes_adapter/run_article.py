@@ -33,6 +33,10 @@ if str(_ROOT) not in sys.path:
     sys.path.insert(0, str(_ROOT))
 os.chdir(_ROOT)
 
+from hermes_adapter.runtime import pin_interpreter_on_path  # noqa: E402
+
+pin_interpreter_on_path()  # bare `python` in pipeline BASH stages → this venv
+
 from hermes_adapter.config import ConfigError, load_config
 from hermes_adapter.driver import drive_task
 from hermes_adapter.llm import ChatClient
