@@ -16,7 +16,7 @@
 | `hermes_adapter/bootstrap_project.py` + `templates/clawclipfactory/` | 用"填表"代替交互式 `/init`，工厂事实只能来自你填的内容 |
 | SEOPress 适配 | 新增 `scripts/wordpress/seopress_api.py`，直接调用 SEOPress 自带的 REST API 写入并回读；`verify_post` 的草稿检查改为通过同一接口读取（原版只认 RankMath，SEOPress 草稿会永远校验失败） |
 | `hermes_adapter/hermes/seo-article/SKILL.md` | 给 Hermes 用的技能说明 |
-| `tests/` | 37 个离线测试（含真实编排器的全链路测试），不花钱 |
+| `tests/` | 44 个离线测试（含真实编排器的全链路测试），不花钱 |
 
 ---
 
@@ -44,7 +44,7 @@ git clone https://github.com/135798888/loamwright-SEO-Skill.git loamwright-seo-s
 cd loamwright-seo-skill
 python3 -m venv .venv && source .venv/bin/activate
 pip install -r requirements.txt
-python -m pytest tests/ -q        # 应显示 37 passed
+python -m pytest tests/ -q        # 应显示 44 passed
 ```
 
 > 以后每次更新：`cd ~/loamwright-seo-skill && git pull`
@@ -132,7 +132,17 @@ cost_limits:                    # 注意键名：原 README 写的 per_article/d
 >
 > 不要用 `gemini-3.1-flash-image-preview`（Nano Banana 2）：已有公开报告它在 Vertex 上会忽略 4K 设置、只返回约 1K 的图，而原插件要求 4K。
 
-> ⚠ 原插件生图**固定请求 4K 尺寸**（如 3840x2160），只有 gpt-image-2 或 Gemini 3 Pro Image 这类模型支持。中转站只有 gpt-image-1 / dall-e-3 的话会报尺寸错误。这种情况先告诉我，我把尺寸改成可配置。`--image-count 0`（纯文字）原插件允许，但我还没验证它能完整走完后面的图片检查。
+> ⚠ 原插件生图**固定请求 4K 尺寸**（如 3840x2160），返回尺寸不对就判失败。有些中转站不管要求多大都只返回 1672x941，这时可以在那个 provider 下加一行 `min_long_edge: 1200`：
+>
+> ```yaml
+>     - name: relay
+>       base_url: https://你的中转站/v1
+>       credential: openai
+>       model: gpt-image-2
+>       min_long_edge: 1200      # 接受长边 ≥1200 的图；比例不对会居中裁剪；不会放大
+> ```
+>
+> 博客正文宽度一般在 1200px 以内，1672x941 足够清晰。注意：1:1 方图从 1672x941 裁出来只有 941x941，会低于 1200 被拒绝，所以这种中转站只适合 16:9 和 4:3 的图。不加这一行的 provider，行为和原版完全一样。
 >
 > B2B 工厂站建议每篇少放 AI 图（`--image-count 2` 或 `3`）。数据图表是本地渲染的，不花钱。真实工厂照片后期在 WordPress 里替换效果更好。
 
