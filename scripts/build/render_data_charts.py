@@ -107,6 +107,7 @@ _RENDERERS = {
     "grouped_vbar": dcp.render_grouped_vbar,
     "rangebar": dcp.render_rangebar,
     "table": dcp.render_table,
+    "flow": dcp.render_flow,
 }
 
 
@@ -223,7 +224,7 @@ def render(task_id: str, project_slug: str = "",
         ctype = str(spec.get("type", "vbar")).lower()
         renderer = _RENDERERS.get(ctype)
         if renderer is None:
-            errors.append({"slot_id": slot_id, "error": f"unknown chart type '{ctype}' (use vbar|grouped_vbar|rangebar|table)"})
+            errors.append({"slot_id": slot_id, "error": f"unknown chart type '{ctype}' (use vbar|grouped_vbar|rangebar|table|flow)"})
             continue
         seed = e.get("filename_seed") or f"{task_id}-{slot_id}-chart"
         out_path = ws / "images" / f"{seed}.png"

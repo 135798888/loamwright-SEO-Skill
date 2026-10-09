@@ -8,6 +8,7 @@ Chart types:
   - grouped_vbar : vertical bars with TWO+ series per category + a legend
   - rangebar     : horizontal range-band chart (min..max band per row + annotation)
   - table        : multi-column comparison / verdict matrix
+  - flow         : numbered process steps joined by arrows (routes, procedures)
 
 Resolution (2026-06-15): charts render at 2x supersample — a logical 1024 layout
 drawn at SCALE=2 → 2048x2048 device px — so text is retina-crisp and many-bar charts
@@ -511,7 +512,57 @@ def render_table(spec, W=CANVAS, H=CANVAS):
     _footer(d, W, H, spec.get("source",""))
     return img
 
+def render_flow(spec, W=CANVAS, H=CANVAS):
+    """Process diagram: numbered step cards top to bottom, joined by arrows.
+
+    For routes and procedures (sample approval, tooling, RFQ to delivery) — a real
+    diagram with real text, where an AI image would garble the labels.
+    Spec: {type:'flow', title, subtitle?, steps:[{label, detail?}], source?} (2-8 steps).
+    """
+    steps = [s if isinstance(s, dict) else {"label": str(s)} for s in (spec.get("steps") or [])]
+    if not 2 <= len(steps) <= 8:
+        raise ValueError("flow chart_spec needs 2-8 'steps'")
+    img = Image.new("RGB", (W, H), BG); d = ImageDraw.Draw(img)
+    top = _header(d, W, spec["title"], spec.get("subtitle", ""))
+    bottom = H - px(110)
+    n = len(steps)
+    gap = px(44)                                    # room for the arrow between cards
+    card_h = min(px(190), (bottom - top - gap * (n - 1)) / n)
+    left, right = px(110), W - px(110)
+    roomy = card_h >= px(150)
+    lf, lh = (_f(34, True), px(44)) if roomy else (_f(29, True), px(38))
+    df, dh = (_f(25), px(33)) if roomy else (_f(21), px(27))
+    badge_r = min(px(38), card_h / 2 - px(10))
+    y = top
+    for i, st in enumerate(steps):
+        y0, y1 = y, y + card_h
+        d.rounded_rectangle([left, y0, right, y1], radius=px(18), fill=(255, 255, 255),
+                            outline=LIGHTGREY, width=px(2))
+        d.rounded_rectangle([left, y0, left + px(10), y1], radius=px(4), fill=ACCENT)
+        cx, cy = left + px(70), (y0 + y1) / 2
+        d.ellipse([cx - badge_r, cy - badge_r, cx + badge_r, cy + badge_r], fill=PRIMARY)
+        _center(d, cx, cy, str(i + 1), _f(30, True), _ink_on(PRIMARY))
+        tx, tw = left + px(130), right - left - px(160)
+        label = _wrap(str(st.get("label", "")), lf, tw, d, max_lines=1)
+        detail = _wrap(str(st.get("detail", "") or ""), df, tw, d,
+                       max_lines=max(0, min(3, int((card_h - lh - px(12)) // dh))))
+        block = lh + len(detail) * dh
+        ty = cy - block / 2 + lh / 2
+        for ln in label:
+            d.text((tx, ty), ln, font=lf, fill=PRIMARY, anchor="lm"); ty += lh / 2 + dh / 2
+        for ln in detail:
+            d.text((tx, ty), ln, font=df, fill=INK, anchor="lm"); ty += dh
+        if i < n - 1:                               # arrow to the next card
+            ax, a0, a1 = W / 2, y1 + px(6), y1 + gap - px(6)
+            d.line([(ax, a0), (ax, a1 - px(12))], fill=SECONDARY, width=px(5))
+            d.polygon([(ax - px(14), a1 - px(16)), (ax + px(14), a1 - px(16)), (ax, a1)], fill=SECONDARY)
+        y = y1 + gap
+    _footer(d, W, H, spec.get("source", ""))
+    return img
+
+
 _RENDERERS = {
+    "flow": render_flow,
     "vbar": render_vbar,
     "grouped_vbar": render_grouped_vbar,
     "rangebar": render_rangebar,

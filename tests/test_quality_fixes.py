@@ -216,10 +216,34 @@ def test_own_library_fills_photo_slots_and_passes_the_real_join_gate(task, tmp_p
     assert orch._content_gate_reason(ws, "image-pipeline-join") is None
 
 
-def test_empty_library_is_refused_before_any_spend(project):
+def test_empty_library_falls_back_to_illustrations_then_switches_to_photos(project, tmp_path):
+    from hermes_adapter.photo_library import add
     from hermes_adapter.run_article import _preflight
-    assert "no approved photos" in _preflight(project, None)
-    assert _preflight(project, 0) is None
+    from scripts.openai.image_fork import decide_pipeline
+    assert _preflight(project, None) is None            # no photos yet: still allowed to run
+    assert decide_pipeline(project) == "ai_gen"         # AI, in the illustration style
+    import yaml
+    g = yaml.safe_load((PLUGIN_ROOT / "projects" / project / "brand-guideline.yaml").read_text())
+    assert g["realism"] == "illustration" and "photorealistic" in g["negative_prompt_baseline"]
+    _png(tmp_path / "p.png")
+    add(project, tmp_path / "p.png", "product", "CL-001 claw clip", [])
+    assert decide_pipeline(project) == "own_library"    # photos approved: used automatically
+
+
+def test_flow_diagram_renders_through_the_real_chart_stage(task):
+    from scripts.build import render_data_charts as rdc
+    tid, ws = task
+    (ws / "image-prompts.json").write_text(json.dumps([
+        {"slot_id": "route", "kind": "chart", "filename_seed": "sample-route",
+         "chart_spec": {"type": "flow", "title": "Our sample route",
+                        "steps": [{"label": "Send requirements", "detail": "Model, quantity, color"},
+                                  {"label": "Sample in about 7 days"}, {"label": "Bulk production"}]}}]))
+    res = rdc.render(tid, "clawclipfactory")
+    assert not res.get("errors"), res.get("errors")
+    imgs = json.loads((ws / "images.json").read_text())
+    assert [e["slot_id"] for e in imgs] == ["route"]
+    from PIL import Image
+    assert Image.open(imgs[0]["path"]).size[0] >= 1024
 
 
 def test_ai_never_regenerates_a_library_photo(tmp_path, monkeypatch):
@@ -286,3 +310,18 @@ def test_reinstall_keeps_server_filled_facts(project):
     assert after["company"]["factory_facts"]["monthly_capacity"] == "300,000 pcs"
     assert after["wordpress"]["default_categories"] == ["Materials"]
     assert after["editorial"]["skip_stages"] == ["citation-capsule-builder"]   # new keys still arrive
+
+
+def test_owner_retracted_facts_are_removed_from_the_server_copy(project):
+    """The owner said: not exporting yet, no test reports. An older server value must go."""
+    from hermes_adapter.agent import project_brief
+    from hermes_adapter.bootstrap_project import install
+    p = PLUGIN_ROOT / "projects" / project / "business-context.json"
+    bc = json.loads(p.read_text())
+    bc["company"]["factory_facts"]["export_markets"] = "North America, Europe, Australia"
+    p.write_text(json.dumps(bc))
+    install(TPL, allow_todo=True, force=False)
+    facts = json.loads(p.read_text())["company"]["factory_facts"]
+    assert "export_markets" not in facts and facts["founded"] == "2021"
+    brief = project_brief(project)
+    assert "North America" not in brief and "never claim export history" in brief.lower()

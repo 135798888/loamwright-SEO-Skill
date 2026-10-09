@@ -61,11 +61,25 @@ def _unset(v: Any) -> bool:
     return v is None or v == "" or v == [] or (isinstance(v, str) and v.strip().upper().startswith("TODO"))
 
 
+def drop_nulls(obj: Any) -> Any:
+    if isinstance(obj, dict):
+        return {k: drop_nulls(v) for k, v in obj.items() if v is not None}
+    if isinstance(obj, list):
+        return [drop_nulls(v) for v in obj if v is not None]
+    return obj
+
+
 def merge_keep_existing(template: Any, existing: Any) -> Any:
-    """Deep merge: an existing, filled-in value wins; the template fills gaps."""
+    """Deep merge: an existing, filled-in value wins; the template fills gaps.
+
+    A template value of null REMOVES the key: that is how a fact the owner has said is
+    not true (e.g. export markets before any export) is taken back out of a server copy."""
     if isinstance(template, dict) and isinstance(existing, dict):
         out = dict(existing)
         for k, tv in template.items():
+            if tv is None:
+                out.pop(k, None)
+                continue
             out[k] = merge_keep_existing(tv, existing[k]) if k in existing else tv
         return out
     return template if _unset(existing) else existing
@@ -120,7 +134,7 @@ def install(template: Path, *, allow_todo: bool, force: bool) -> tuple[str, list
         bc = strip_todos(bc)
         brand_cfg = strip_todos(brand_cfg) if brand_cfg else None
 
-    errors = validate_business_context(bc)
+    errors = validate_business_context(drop_nulls(bc))
     if errors:
         raise SystemExit("business-context.json fails schemas/business-context.schema.json:\n  - "
                          + "\n  - ".join(errors))
@@ -136,10 +150,11 @@ def install(template: Path, *, allow_todo: bool, force: bool) -> tuple[str, list
         # keys the server copy does not have yet (or still has as TODO/empty).
         existing = json.loads(dst.read_text(encoding="utf-8"))
         bc = merge_keep_existing(bc, existing)
-        errors = validate_business_context(bc)
+        errors = validate_business_context(drop_nulls(bc))
         if errors:
             raise SystemExit("merged business-context.json fails the schema:\n  - " + "\n  - ".join(errors))
         notes.append("merged into the existing business-context.json (existing values kept)")
+    bc = drop_nulls(bc)
     dst.write_text(json.dumps(bc, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
 
     if brand_cfg:

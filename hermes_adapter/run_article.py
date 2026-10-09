@@ -159,13 +159,10 @@ def _pop_queue(path: Path) -> str | None:
 
 def _preflight(project: str, image_count: int | None) -> str | None:
     """Problems that would only surface hours into a run, checked before any spend."""
-    from scripts.openai.own_library_pipeline import load_library, uses_own_library
-    if uses_own_library(project) and image_count != 0:
-        photos, lib = load_library(project)
-        if not photos:
-            return (f"project {project} uses its own photo library but {lib} has no approved photos. "
-                    "Add real photos (python -m hermes_adapter.photo_library --help) or run with "
-                    "--image-count 0.")
+    from scripts.openai.own_library_pipeline import library_policy, load_library
+    if library_policy(project) and image_count != 0 and not load_library(project)[0]:
+        print(f"[images] {project}: photo library has no approved photos yet; photo slots use the "
+              "project's AI illustration style (brand-guideline.yaml).", file=sys.stderr, flush=True)
     return None
 
 

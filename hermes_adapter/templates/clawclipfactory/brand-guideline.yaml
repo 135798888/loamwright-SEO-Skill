@@ -1,25 +1,39 @@
 # Image direction for clawclipfactory articles (read by image-prompt-designer and image-visual-qa).
-# Photo slots are filled from the factory's OWN photo library (image_sourcing_policy.source =
-# own_library); nothing here is sent to an image model for those slots. Charts are rendered
-# from data. AI images are not used for this project.
+#
+# Order of preference for every image slot:
+#   1. A DIAGRAM or CHART rendered from data (kind='chart'): processes as type 'flow',
+#      comparisons as 'table', numbers as 'vbar'/'grouped_vbar'/'rangebar'. Real text, no AI.
+#   2. A real photo from the factory's own photo library, once photos are approved there.
+#   3. An AI ILLUSTRATION in the style below. Never a photorealistic image.
 visual_style: >-
-  Real factory and product photography from our own library. Documentary, not advertising.
-art_direction_prefix: ""
-realism: photographic
+  Flat editorial vector illustration. Clean geometric shapes, soft shadows, generous white space.
+  Limited brand palette: deep green #113a36, teal #2c6373, warm yellow #f2bc3e, cream #fdfcf7.
+  Calm, professional B2B look, like an illustrated trade-publication article.
+art_direction_prefix: >-
+  Flat vector editorial illustration, clean geometric shapes, limited palette of deep green,
+  teal, warm yellow and cream, cream background, generous white space, no photorealism,
+  no text, no letters, no numbers, no logos.
+realism: illustration
 featured_image:
   text_overlay: false
 packaging_branding:
   forbid_third_party_brands: true
   label_text: ""
+subjects: >-
+  Prefer concepts that do not depend on a claw clip's mechanics: shipping cartons and pallets,
+  color swatch cards and resin pellets, a simple mold block, a clipboard with a checklist, a
+  factory building icon, a world map with shipping routes, a buyer's desk with samples and papers.
+  A claw clip may appear only as a SMALL, SIMPLE stylized icon (a rounded silhouette), never a
+  detailed close-up: image models draw the hinge, spring and teeth wrong.
 slot_guidance: >-
-  Describe each photo slot by WHAT it must show in plain words (for example "CL-002 matte
-  rectangular claw clip, product shot" or "injection molding machines on the production floor"
-  or "retail packaging on backing cards"). These words are matched against the photo library.
-  Captions are one short sentence for the reader; never style or prompt words.
+  Describe each slot by what it must show in plain words. A process (sample route, tooling
+  route, RFQ steps) is a 'flow' chart with 3-8 steps, not an illustration. Captions are one
+  short reader-facing sentence, never prompt or style words.
 claw_clip_anatomy_for_qa: >-
   A correct claw clip has TWO jaws hinged together by one pin with a coil spring, and two rows of
   teeth that face each other and interlock when closed. Reject any image where a jaw is missing,
-  the spring or pin floats, the teeth do not face or interlock, or the clip could not open and close.
+  the spring or pin floats, the teeth do not face or interlock, or the clip could not open and
+  close. Reject any photorealistic image (this project uses illustrations and real photos only).
 negative_prompt_baseline: >-
-  text, watermark, logo, brand name, distorted clip hinges, extra teeth, melted plastic,
-  cartoon, illustration, 3D render look
+  photorealistic, photograph, 3D render, text, letters, numbers, watermark, logo, brand name,
+  detailed claw clip close-up, distorted hinges, extra teeth, melted plastic, human faces

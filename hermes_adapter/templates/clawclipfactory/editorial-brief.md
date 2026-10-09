@@ -16,7 +16,8 @@ them knowing more AND seeing why talking to this factory is a sensible next step
   existing molds, tooling route, products). Do not cite our own website for them and do not
   add them to References.
 - Never invent a company fact that is not in the list (no capacity, lead time, certification,
-  price, years or headcount unless listed). If a fact is missing, write around it; never say
+  price, years or headcount unless listed). The "not_claimable" item says what we must never
+  claim (export history, countries served, certifications, test reports). If a fact is missing, write around it; never say
   "we cannot confirm" about ourselves.
 - Industry facts (Incoterms, material properties, testing standards) need real external sources.
   Aim for 6-10 authoritative references (standards bodies, government trade sites, material
@@ -47,12 +48,17 @@ them knowing more AND seeing why talking to this factory is a sensible next step
 - CTA link text is a short button label (at most 5 words, e.g. "Request a quote"), not a sentence.
 
 ## Images
-- Real photos from our photo library are used for product and factory slots. Never ask for an
-  AI-generated close-up of a claw clip: AI draws the hinge, spring and interlocking teeth wrong.
-- AI images are allowed only for scenes without a recognizable claw clip (color pellets,
-  packaging boxes, a buyer's desk with documents), and charts are rendered from data.
-- Captions are a short sentence for the reader describing what the photo shows. Never put the
-  image prompt or style words ("realistic photograph, soft daylight, no text") in a caption.
+Order of preference for every image slot:
+1. A diagram or chart drawn from data (kind "chart"): a process (sample route, tooling route,
+   RFQ steps) is a "flow" chart; a comparison is a "table"; numbers are bar or range charts.
+2. A real photo from our photo library, once photos are approved there (used automatically).
+3. An AI image in the flat illustration style of brand-guideline.yaml: concepts such as cartons,
+   color swatches, a mold block, a checklist, a world map. Never photorealistic, never a detailed
+   claw clip (AI draws the hinge, spring and teeth wrong); a clip may appear only as a small,
+   simple icon.
+- Aim for at least two diagrams/charts per article; they carry real information.
+- Captions are a short sentence for the reader describing what the image shows. Never put the
+  image prompt or style words ("flat vector, no text") in a caption.
 - Real-library photos (source "own_library") must never be regenerated or edited by AI.
 
 ## For reviewers and repair agents

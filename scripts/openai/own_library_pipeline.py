@@ -59,7 +59,8 @@ def load_library(project_slug: str) -> tuple[list[dict[str, Any]], Path]:
     return [p for p in photos if isinstance(p, dict) and p.get("approved") is True], lib_path
 
 
-def uses_own_library(project_slug: str) -> bool:
+def library_policy(project_slug: str) -> bool:
+    """True when the project's policy names its own library as the photo source."""
     if not project_slug:
         return False
     try:
@@ -68,6 +69,15 @@ def uses_own_library(project_slug: str) -> bool:
     except (OSError, ValueError):
         return False
     return (bc.get("image_sourcing_policy") or {}).get("source") == SOURCE
+
+
+def uses_own_library(project_slug: str) -> bool:
+    """Route photo slots to the library only once it holds at least one approved photo.
+
+    Before that the project's AI style (brand-guideline.yaml) is used — for clawclipfactory
+    flat illustrations, never photoreal clips — so a project can start publishing before
+    its photo shoot, and switches to real photos automatically once they are approved."""
+    return library_policy(project_slug) and bool(load_library(project_slug)[0])
 
 
 def _slot_text(slot: dict[str, Any]) -> str:
