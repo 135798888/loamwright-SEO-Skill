@@ -1,17 +1,25 @@
-# Image art direction for AI-generated article images (read by the image-prompt-designer agent).
-# B2B manufacturer: images must look like a real factory / real product, never a lifestyle ad.
+# Image direction for clawclipfactory articles (read by image-prompt-designer and image-visual-qa).
+# Photo slots are filled from the factory's OWN photo library (image_sourcing_policy.source =
+# own_library); nothing here is sent to an image model for those slots. Charts are rendered
+# from data. AI images are not used for this project.
 visual_style: >-
-  Clean, natural-light product and factory photography. Neutral off-white and warm grey
-  backgrounds (#f8f6f3), muted gold-copper accents (#b39a7c). Documentary, not glossy advertising.
-art_direction_prefix: >-
-  Realistic photograph, natural soft daylight, neutral off-white background, true-to-life plastic
-  and acetate textures, sharp focus on the hair claw clips, no text, no logos.
+  Real factory and product photography from our own library. Documentary, not advertising.
+art_direction_prefix: ""
 realism: photographic
 featured_image:
   text_overlay: false
 packaging_branding:
   forbid_third_party_brands: true
   label_text: ""
+slot_guidance: >-
+  Describe each photo slot by WHAT it must show in plain words (for example "CL-002 matte
+  rectangular claw clip, product shot" or "injection molding machines on the production floor"
+  or "retail packaging on backing cards"). These words are matched against the photo library.
+  Captions are one short sentence for the reader; never style or prompt words.
+claw_clip_anatomy_for_qa: >-
+  A correct claw clip has TWO jaws hinged together by one pin with a coil spring, and two rows of
+  teeth that face each other and interlock when closed. Reject any image where a jaw is missing,
+  the spring or pin floats, the teeth do not face or interlock, or the clip could not open and close.
 negative_prompt_baseline: >-
   text, watermark, logo, brand name, distorted clip hinges, extra teeth, melted plastic,
-  cartoon, illustration, 3D render look, people's faces in close-up, hands with extra fingers
+  cartoon, illustration, 3D render look

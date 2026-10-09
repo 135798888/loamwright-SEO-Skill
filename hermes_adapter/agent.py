@@ -69,8 +69,53 @@ def load_agent(name: str, root: Path = PLUGIN_ROOT) -> AgentDef:
                     declared_tools=list(declared))
 
 
+def project_brief(project_slug: str | None) -> str:
+    """The project's editorial brief + its verified company facts, for EVERY agent.
+
+    Agent definitions are generic (written for review/affiliate sites). Without the
+    project's own voice, facts and bans, writers hedge about the company, reviewers ask
+    for third-party proof of first-party facts, and repair agents add disclaimers
+    (post 289, 2026-10-08). One injected block reaches writer, reviewer, repair,
+    fact-checker and image designer alike, so they cannot disagree.
+    """
+    if not project_slug:
+        return ""
+    root = PLUGIN_ROOT / "projects" / project_slug
+    parts: list[str] = []
+    brief = root / "editorial-brief.md"
+    if brief.exists():
+        parts.append(brief.read_text(encoding="utf-8").strip())
+    bc_path = root / "business-context.json"
+    if bc_path.exists():
+        try:
+            bc = json.loads(bc_path.read_text(encoding="utf-8"))
+        except (OSError, ValueError):
+            bc = {}
+        company = bc.get("company") or {}
+        lines = []
+        for k in ("legal_name", "brand_name", "years_operating"):
+            v = company.get(k)
+            if v not in (None, "") and not str(v).upper().startswith("TODO"):
+                lines.append(f"- {k}: {v}")
+        for k, v in (company.get("factory_facts") or {}).items():
+            if k.startswith("_") or v in (None, "") or str(v).strip().upper().startswith("TODO"):
+                continue
+            lines.append(f"- {k}: {v}")
+        if lines:
+            parts.append("## COMPANY FACTS (first-party, verified — the only company facts you may state)\n"
+                         + "\n".join(lines))
+    return ("\n\n# Project editorial brief (applies to every task in this project)\n\n"
+            + "\n\n".join(parts)) if parts else ""
+
+
 def _env_preamble(task_id: str | None, project_slug: str | None, tools: list[str]) -> str:
     ws = PLUGIN_ROOT / "memory" / "workspace" / (task_id or "<task>")
+    from hermes_adapter.topic_overlap import brief_block
+    return (_runtime_preamble(task_id, project_slug, tools, ws) + project_brief(project_slug)
+            + (brief_block(ws) if task_id else ""))
+
+
+def _runtime_preamble(task_id: str | None, project_slug: str | None, tools: list[str], ws: Path) -> str:
     return f"""# Runtime environment (hermes_adapter)
 
 You are running as an isolated subagent of the Xuanran/Loamwright SEO pipeline, hosted by

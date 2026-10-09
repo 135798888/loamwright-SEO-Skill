@@ -175,6 +175,7 @@ class Driver:
         self.bash_errors: dict[str, int] = defaultdict(int)
         self.retry_notes: dict[str, str] = {}
         self.second_opinion_done = False
+        self.editorial_done = False
         self.image_fork_reruns = 0
 
     # ── logging ─────────────────────────────────────────────────
@@ -208,8 +209,16 @@ class Driver:
 
                 # Second opinion: right after the runner ACCEPTED the independent reviewer
                 # (anything but an ERROR on that stage), before pre-publish / publish.
-                if (just_completed == "independent-reviewer" and not self.second_opinion_done
-                        and not (action == "ERROR" and stage == "independent-reviewer")):
+                reviewer_accepted = (just_completed == "independent-reviewer"
+                                     and not (action == "ERROR" and stage == "independent-reviewer"))
+                # Project editorial rules (business-context.editorial): deterministic, cheap,
+                # and BEFORE the second opinion so the cross-model judge sees the fixed draft.
+                if reviewer_accepted and not self.editorial_done:
+                    self.editorial_done = True
+                    stop = self._editorial()
+                    if stop:
+                        return self._finish("failed", stop, "editorial-check")
+                if reviewer_accepted and not self.second_opinion_done:
                     self.second_opinion_done = True
                     stop = self._second_opinion()
                     if stop:
@@ -218,6 +227,8 @@ class Driver:
                 if action == "COMPLETE":
                     return self._finish("complete", "pipeline complete (draft + live checks passed)")
 
+                if action == "DISPATCH_LLM" and self._project_skips(r):
+                    continue
                 if action == "DISPATCH_LLM":
                     if self._dispatch(r):
                         completed_llm = stage
@@ -272,6 +283,43 @@ class Driver:
             return self._finish("budget_exceeded", str(e))
         except LLMError as e:
             return self._finish("failed", f"LLM endpoint error: {e}")
+
+    def _project_skips(self, r: dict[str, Any]) -> bool:
+        """Skip an OPTIONAL stage the project opted out of (editorial.skip_stages).
+
+        clawclipfactory skips citation-capsule-builder: it inserts a templated
+        "X has N fields" summary under every H2, the robotic repetition its readers
+        complained about. Mandatory stages can never be skipped this way."""
+        from hermes_adapter.editorial_check import project_config
+        stage = r.get("stage") or ""
+        if stage not in (project_config(self.slug).get("skip_stages") or []):
+            return False
+        if r.get("is_mandatory", True):
+            self.event("project_skip_refused", stage=stage, reason="stage is mandatory")
+            return False
+        from scripts.pipeline import orchestrator as orch
+        res = orch.skip_stage(self.task_id, stage, "project editorial.skip_stages")
+        self.event("project_skip", stage=stage, result=str(res)[:300])
+        return True
+
+    def _editorial(self) -> str | None:
+        """Run the project's editorial check; repair and re-check up to repair_rounds."""
+        from hermes_adapter import editorial_check as ec
+        if not ec.project_config(self.slug):
+            return None
+        res: dict[str, Any] = {}
+        for rnd in range(self.cfg.repair_rounds + 1):
+            res = ec.run(self.task_id)
+            self.event("editorial_check", round=rnd, passed=res["passed"],
+                       violations=[v["rule"] for v in res["violations"]])
+            if res["passed"]:
+                return None
+            if rnd < self.cfg.repair_rounds:
+                self._generic_repair("editorial-check", ec.repair_brief(res), "")
+        return ("editorial check still failing after "
+                f"{self.cfg.repair_rounds} repair round(s): "
+                + "; ".join(v["excerpt"][:150] for v in res.get("violations", [])[:5])
+                + ". See editorial-check.json.")
 
     def _second_opinion(self) -> str | None:
         """Run the cross-model check. Returns a stop reason (block mode) or None."""

@@ -182,6 +182,7 @@ def upload(
     check_existing_by_filename: bool = True,
     upload_format: str = "",
     max_dim: int = 0,
+    reused_ids: set[int] | None = None,
 ) -> WPMedia:
     """Upload a single file to Media Library.
 
@@ -194,6 +195,9 @@ def upload(
         description: Long description.
         post_id: Attach to specific post (None = unattached, fine for inline images).
         check_existing_by_filename: If True, search for existing upload with same filename first.
+        reused_ids: If given, the id of an EXISTING item returned by the filename dedupe is
+            added to it, so a caller's rollback can tell "I uploaded this" from "this was
+            already on the site" and never delete the latter.
 
     Returns:
         WPMedia.
@@ -227,6 +231,8 @@ def upload(
     if check_existing_by_filename:
         existing = search_by_filename(client, file_path.name)
         if existing:
+            if reused_ids is not None:
+                reused_ids.add(existing[0].id)
             return existing[0]
 
     if not title:

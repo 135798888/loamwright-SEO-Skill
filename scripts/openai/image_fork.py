@@ -4,6 +4,8 @@ scripts/openai/image_fork.py — image-pipeline router (orchestrator "Fork B" en
 Routes the article's image generation by project policy:
   - projects that source REAL product photos (image_brand_policy.source_real_photos, e.g.
     project-echo) → scripts.openai.real_brand_image_pipeline.run_for_workspace
+  - projects whose image_sourcing_policy.source == "own_library" → the factory's OWN photos
+    (scripts.openai.own_library_pipeline); no AI generation at all
   - everyone else → the canonical AI image pipeline (scripts.openai.openai_image_pipeline),
     delegated UNCHANGED (so existing projects are unaffected).
 
@@ -17,9 +19,12 @@ import sys
 
 
 def decide_pipeline(project_slug: str) -> str:
-    """Return "real_brand" if the project sources real photos, else "ai_gen"."""
+    """Return "own_library" | "real_brand" | "ai_gen" for the project's image policy."""
     if not project_slug:
         return "ai_gen"
+    from scripts.openai.own_library_pipeline import uses_own_library
+    if uses_own_library(project_slug):
+        return "own_library"
     try:
         from scripts._core.image_brand_policy import load_image_brand_policy
         return "real_brand" if load_image_brand_policy(project_slug).source_real_photos else "ai_gen"
@@ -46,6 +51,11 @@ def _main(argv: list[str] | None = None) -> int:
     args, _extra = ap.parse_known_args(argv)
 
     route = decide_pipeline(args.project_slug)
+    if route == "own_library":
+        from scripts.openai import own_library_pipeline as ol
+        merged = ol.run_for_workspace(args.workspace, args.project_slug)
+        print(json.dumps({"ok": True, "route": "own_library", "count": len(merged)}, ensure_ascii=False))
+        return 0
     if route == "real_brand":
         from scripts.openai import real_brand_image_pipeline as rb
         # project_slug is guaranteed truthy here (decide_pipeline returns "ai_gen" for "")

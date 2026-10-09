@@ -157,6 +157,18 @@ def _pop_queue(path: Path) -> str | None:
     return None
 
 
+def _preflight(project: str, image_count: int | None) -> str | None:
+    """Problems that would only surface hours into a run, checked before any spend."""
+    from scripts.openai.own_library_pipeline import load_library, uses_own_library
+    if uses_own_library(project) and image_count != 0:
+        photos, lib = load_library(project)
+        if not photos:
+            return (f"project {project} uses its own photo library but {lib} has no approved photos. "
+                    "Add real photos (python -m hermes_adapter.photo_library --help) or run with "
+                    "--image-count 0.")
+    return None
+
+
 def _run(args, cfg, ap) -> int:
     task_ids: list[str] = []
     queue_kw: str | None = None
@@ -182,12 +194,22 @@ def _run(args, cfg, ap) -> int:
         if not keywords:
             ap.error("give --keyword or --keywords-file")
         os.environ["XS_ACTIVE_PROJECT"] = args.project  # Rule 7: pin project identity
+        problem = _preflight(args.project, args.image_count)
+        if problem:
+            print(json.dumps({"ok": False, "error": problem}, ensure_ascii=False))
+            return 2
         for kw in keywords:
             task_ids.append(create_task(
                 project_slug=args.project, keyword=kw,
                 secondary=[s for s in args.secondary.split(",") if s.strip()],
                 locale=args.locale, word_count=args.word_count,
                 image_count=args.image_count, template_id=args.template))
+            from hermes_adapter.topic_overlap import write_for_task
+            rel = write_for_task(_ROOT / "memory" / "workspace" / task_ids[-1], kw, args.project)
+            if rel:
+                print(f"[overlap] '{kw}' overlaps {len(rel)} existing post(s); writers will take a "
+                      f"different angle: " + "; ".join(r["title"] for r in rel[:5]),
+                      file=sys.stderr, flush=True)
 
     reports = []
     for tid in task_ids:

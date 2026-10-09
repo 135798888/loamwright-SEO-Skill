@@ -8,17 +8,29 @@
   "usage_type": "b2b_manufacturer",
   "location": {
     "country": "CN",
-    "languages": ["en"],
+    "languages": [
+      "en"
+    ],
     "local_seo_mode": "off",
-    "service_areas": { "type": "global" }
+    "service_areas": {
+      "type": "global"
+    }
   },
-  "voice_default": { "pair": "professional × technical" },
-  "publish_policy": { "default": "draft" },
-
+  "voice_default": {
+    "pair": "professional × technical"
+  },
+  "publish_policy": {
+    "default": "draft"
+  },
   "citation_source_policy": {
     "enforcement": "hard_veto",
     "exclude_competitor_domains": true,
-    "scope": ["in_text_citations", "references", "outbound_links", "schema_citation"],
+    "scope": [
+      "in_text_citations",
+      "references",
+      "outbound_links",
+      "schema_citation"
+    ],
     "do_not_cite_domains": [
       "canyuandesign.com",
       "hairclipsupplier.com",
@@ -27,29 +39,35 @@
     "allow_brand_mention_in_prose": false,
     "sole_source_behavior": "research_replacement"
   },
-
   "company": {
     "legal_name": "Quzhou Jiahe Plastic Products Co., Ltd.",
-    "brand_name": "TODO: the brand name buyers see on the site",
-    "years_operating": "TODO: integer, e.g. 11 — resolve the 2008 vs 2014 founding-year conflict first",
+    "brand_name": "ClawClipFactory",
+    "years_operating": "TODO: integer — not published on the site; resolve the 2008 vs 2014 founding-year question first",
     "factory_facts": {
+      "_source": "Published on clawclipfactory.com (home, capabilities, FAQ, custom-tooling, claw-clips pages), checked 2026-10-09. Only add facts the factory confirms.",
       "location": "Quzhou, Zhejiang, China",
-      "core_process": "Plastic injection molding + in-house assembly and packaging",
-      "materials": "TODO: e.g. PC, ABS, acetate (cellulose acetate), PETG — only what you really run",
-      "moq": "TODO: e.g. 1,000 pcs per design/color",
-      "sample_lead_time": "TODO: e.g. 5-7 days for stock designs",
-      "mold_lead_time": "TODO: e.g. 20-25 days for a new mold",
-      "bulk_lead_time": "TODO: e.g. 25-35 days after sample approval",
-      "monthly_capacity": "TODO: e.g. 500,000 pcs",
-      "customization": "TODO: e.g. custom color (Pantone), logo, packaging, new mold",
-      "quality_control": "TODO: e.g. spring-tension test, drop test, AQL 2.5 final inspection",
-      "certifications_and_tests": "TODO: only real ones, e.g. BSCI audit, REACH / CPSIA test reports",
-      "export_markets": "North America, Europe, Australia",
-      "packaging_options": "TODO: e.g. OPP bag, hang card, gift box"
+      "core_process": "Plastic injection molding. Injection molding, spring installation, assembly, inspection and packaging are handled in-house.",
+      "materials": "ABS and PC for injection-molded clips; the final resin is selected per project. Model CL-001 is made in PP.",
+      "moq": "Standard starting MOQ is 1,000 pieces per style; multi-style orders are evaluated style by style.",
+      "sample_lead_time": "Typical sample target is about 7 days after requirements, sample fee and freight are confirmed; actual timing depends on mold readiness, material, color and sample scope.",
+      "sample_policy": "The buyer pays the sample fee and freight; the sample fee can be credited against the production order when agreed.",
+      "quote_response": "Quote requests are answered within 24 hours.",
+      "existing_molds": "More than 10 existing mold styles; current availability is confirmed per inquiry.",
+      "customization": "Custom solid or translucent resin colors; matte or polished surface options subject to material and design; color is matched to an agreed physical sample or color standard, not a screen value.",
+      "logo": "Logo application is arranged through a specialized cooperating partner; method, MOQ and cost depend on the logo process and product design.",
+      "packaging_options": "Packaging is done in-house; automatic packaging equipment is available for suitable formats; the format is confirmed per project.",
+      "quality_control": "Molded parts are checked for visible defects, color consistency, filling, flash and deformation; molding conditions are locked after sample approval and kept for repeat batches.",
+      "new_tooling": "A new shape, size or mechanical structure needs a feasibility review and a separate tooling quotation. Route: brief review, feasibility discussion, tooling quotation (scope, payment terms, timing and ownership conditions in writing), mold development, sample and revision, production release.",
+      "bulk_lead_time": "TODO: typical bulk production range after sample approval (the site currently says it is confirmed per order)",
+      "mold_lead_time": "TODO: typical new-mold development range",
+      "monthly_capacity": "TODO: e.g. pieces per month",
+      "certifications_and_tests": "TODO: only real ones you can show (audits, REACH/CPSIA test reports, spring-tension or drop tests)",
+      "payment_terms": "TODO: e.g. 30% deposit, 70% before shipment",
+      "export_markets": "TODO: countries you actually ship to today",
+      "products": "CL-001 Soft Flexible Moon Cutout (105 mm, PP); CL-002 Rectangular Cutout Matte (105 mm, ABS); CL-003 Skeleton (110 mm, ABS, glossy); CL-004 Twist Cutout (110 mm, ABS). All from existing molds, supplied fully assembled, MOQ 1,000 pcs per style."
     },
     "proof_points": []
   },
-
   "conversion_offers": {
     "business_model": "b2b_services",
     "services": [
@@ -66,29 +84,76 @@
     "constraints": {
       "no_person_blocks": true,
       "tone": "B2B, factual, no hype, no fake urgency",
-      "banned_phrases": ["best in the world", "No.1", "cheapest"]
+      "banned_phrases": [
+        "best in the world",
+        "No.1",
+        "cheapest"
+      ]
     }
   },
-
   "cta": {
     "enabled": true,
-    "placements": ["mid", "end"],
+    "placements": [
+      "mid",
+      "end"
+    ],
     "heading": "Talk to the factory",
     "target_url": "https://clawclipfactory.com/custom-claw-clips/"
   },
-
   "article_signature": {
-    "author": "TODO: e.g. the Jiahe production & export team",
+    "author": "TODO: e.g. the ClawClipFactory production and export team",
     "contact_url": "https://clawclipfactory.com/request-a-quote/",
     "cta_clause": "Need custom claw clips? Send us your design or reference photos for a quote."
   },
-
   "wordpress": {
-    "default_categories": ["Sourcing & RFQ"],
+    "default_categories": [
+      "Sourcing & RFQ"
+    ],
     "seo_plugin": "seopress",
     "seo_plugin_schema_provided": []
   },
-
-  "featured_image_inline_policy": { "mode": "no_inline" },
-  "image_pipeline_policy": { "mode": "realtime" }
+  "featured_image_inline_policy": {
+    "mode": "no_inline"
+  },
+  "image_pipeline_policy": {
+    "mode": "realtime"
+  },
+  "article_layout": {
+    "_doc": "Read by scripts/build/assemble.py. The theme already shows a sidebar table of contents.",
+    "front_blocks": [
+      "tldr"
+    ],
+    "inline_toc": false
+  },
+  "editorial": {
+    "_doc": "Enforced by hermes_adapter/editorial_check.py after review; regexes are case-insensitive.",
+    "banned_patterns": [
+      "not independent (product )?testing",
+      "no (individual )?author credentials",
+      "hands-on test results are (not )?claimed",
+      "not independent performance evidence",
+      "manufacturer descriptions establish",
+      "manufacturer-authored guide",
+      "does not (establish|document|validate) (what|factory|performance)",
+      "describes? (customization|sampling) capabilities \\(ClawClipFactory",
+      "\\(ClawClipFactory, n\\.d\\.\\)"
+    ],
+    "banned_h2_patterns": [
+      "delay (your )?purchas",
+      "when to wait",
+      "^what to ignore",
+      "^abstract$"
+    ],
+    "max_exact_keyword_uses": 6,
+    "max_near_duplicate_sentences": 3,
+    "skip_stages": [
+      "citation-capsule-builder"
+    ]
+  },
+  "image_sourcing_policy": {
+    "source": "own_library",
+    "library": "photo-library.json",
+    "ai_fallback": "non_product_only",
+    "_doc": "Photo slots use real photos from projects/{slug}/photo-library.json; AI only for scenes without a claw clip close-up, charts are rendered from data."
+  }
 }

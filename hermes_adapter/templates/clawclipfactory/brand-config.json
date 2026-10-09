@@ -1,14 +1,16 @@
 {
   "site_slug": "clawclipfactory",
-  "brand_name": "TODO: brand name",
+  "brand_name": "ClawClipFactory",
   "colors": {
-    "primary": "#1c1a17",
-    "secondary": "#f8f6f3",
-    "accent": "#b39a7c",
-    "surface_mode": "light"
+    "primary": "#113a36",
+    "secondary": "#2c6373",
+    "accent": "#f2bc3e",
+    "surface_mode": "light",
+    "_doc": "Sampled from the live site: dark green, teal link, yellow Request-a-Quote button."
   },
   "typography": {
-    "heading_font": "Cormorant Garamond",
-    "body_font": "DM Sans"
+    "heading_font": "inherit, sans-serif",
+    "body_font": "inherit, sans-serif",
+    "_doc": "inherit = use the theme's own fonts"
   }
 }

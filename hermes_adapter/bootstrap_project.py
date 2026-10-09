@@ -12,6 +12,7 @@ Template folder contents:
     business-context.json   (required)  → projects/{slug}/business-context.json
     brand-config.json       (optional)  → projects/{slug}/brand/brand-config.json  (+ article CSS)
     brand-guideline.yaml    (optional)  → projects/{slug}/brand-guideline.yaml
+    editorial-brief.md      (optional)  → projects/{slug}/editorial-brief.md  (every agent reads it)
 
 Any string value starting with "TODO" is a fact you have not filled in yet. The
 script refuses to install a template that still has TODOs (so no placeholder can
@@ -54,6 +55,20 @@ def strip_todos(obj: Any) -> Any:
         return [strip_todos(v) for v in obj
                 if not (isinstance(v, str) and v.strip().upper().startswith("TODO"))]
     return obj
+
+
+def _unset(v: Any) -> bool:
+    return v is None or v == "" or v == [] or (isinstance(v, str) and v.strip().upper().startswith("TODO"))
+
+
+def merge_keep_existing(template: Any, existing: Any) -> Any:
+    """Deep merge: an existing, filled-in value wins; the template fills gaps."""
+    if isinstance(template, dict) and isinstance(existing, dict):
+        out = dict(existing)
+        for k, tv in template.items():
+            out[k] = merge_keep_existing(tv, existing[k]) if k in existing else tv
+        return out
+    return template if _unset(existing) else existing
 
 
 def validate_business_context(bc: dict[str, Any]) -> list[str]:
@@ -117,6 +132,14 @@ def install(template: Path, *, allow_todo: bool, force: bool) -> tuple[str, list
         backup = dst.with_suffix(".json.bak")
         shutil.copy2(dst, backup)
         notes.append(f"previous business-context.json backed up to {backup.name}")
+        # Facts filled in on the server win over the template; the template only adds
+        # keys the server copy does not have yet (or still has as TODO/empty).
+        existing = json.loads(dst.read_text(encoding="utf-8"))
+        bc = merge_keep_existing(bc, existing)
+        errors = validate_business_context(bc)
+        if errors:
+            raise SystemExit("merged business-context.json fails the schema:\n  - " + "\n  - ".join(errors))
+        notes.append("merged into the existing business-context.json (existing values kept)")
     dst.write_text(json.dumps(bc, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
 
     if brand_cfg:
@@ -128,6 +151,9 @@ def install(template: Path, *, allow_todo: bool, force: bool) -> tuple[str, list
                      else f"article CSS generation FAILED: {(p.stderr or p.stdout)[-300:]}")
     if (template / "brand-guideline.yaml").exists():
         shutil.copy2(template / "brand-guideline.yaml", root / "brand-guideline.yaml")
+    if (template / "editorial-brief.md").exists():
+        # Injected into every agent's system prompt (hermes_adapter.agent.project_brief).
+        shutil.copy2(template / "editorial-brief.md", root / "editorial-brief.md")
     claude_md = root / "CLAUDE.md"
     if not claude_md.exists() or force:
         claude_md.write_text(_project_claude_md(bc), encoding="utf-8")

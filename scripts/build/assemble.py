@@ -282,6 +282,26 @@ def _replace_claims(text: str, in_text_replacements: list[dict]) -> str:
     return collapse_adjacent_duplicate_citations(text)
 
 
+_ALL_FRONT_BLOCKS = ("tldr", "abstract", "key_takeaways")
+
+
+def _article_layout(state: dict) -> tuple[set[str], bool]:
+    """(front blocks to emit, whether to emit an in-article ToC) for the task's project."""
+    slug = str((state or {}).get("project_slug") or "")
+    layout: dict = {}
+    if slug:
+        bc = Path(__file__).resolve().parents[2] / "projects" / slug / "business-context.json"
+        if bc.exists():
+            try:
+                layout = json.loads(bc.read_text(encoding="utf-8")).get("article_layout") or {}
+            except (OSError, ValueError):
+                layout = {}
+    blocks = layout.get("front_blocks")
+    front = set(_ALL_FRONT_BLOCKS) if not isinstance(blocks, list) else {
+        str(b).lower() for b in blocks if str(b).lower() in _ALL_FRONT_BLOCKS}
+    return front, bool(layout.get("inline_toc", True))
+
+
 def _build_takeaways_section(seeds: list[str]) -> str:
     """Render Key Takeaways list."""
     if not seeds:
@@ -632,16 +652,24 @@ def assemble(task_id: str) -> Path:
         for s in sections
     }
 
+    # Project layout (business-context.json :: article_layout). Default = every front
+    # block + an inline ToC (historical behavior). A project whose theme already renders
+    # a sidebar ToC, or that finds TL;DR + Abstract + Key Takeaways + ToC repetitive
+    # (four summaries before the first section — clawclipfactory post 289), narrows it.
+    front_blocks, inline_toc = _article_layout(state)
+
     # TL;DR (from outline tldr_seed) — only if no writer section covers it
-    if outline.get("tldr_seed") and not any("tl;dr" in h or "tldr" in h for h in writer_h2s_lower):
+    if ("tldr" in front_blocks and outline.get("tldr_seed")
+            and not any("tl;dr" in h or "tldr" in h for h in writer_h2s_lower)):
         parts.append(f"## TL;DR\n\n{outline['tldr_seed']}\n")
 
     # Abstract — only if no writer section covers it
-    if outline.get("abstract_seed") and not any("abstract" in h for h in writer_h2s_lower):
+    if ("abstract" in front_blocks and outline.get("abstract_seed")
+            and not any("abstract" in h for h in writer_h2s_lower)):
         parts.append(f"## Abstract\n\n{outline['abstract_seed']}\n")
 
     # Key Takeaways — only if no writer section covers it
-    if not any("key takeaway" in h for h in writer_h2s_lower):
+    if "key_takeaways" in front_blocks and not any("key takeaway" in h for h in writer_h2s_lower):
         parts.append(_build_takeaways_section(outline.get("takeaways_seeds", [])))
 
     # ToC placeholder — emit it only if NO writer TOC section exists. If a writer
@@ -660,7 +688,7 @@ def assemble(task_id: str) -> Path:
         for s in sections
     }
     has_writer_toc = any("table of contents" in h for h in section_h2s_lower_pre)
-    if not has_writer_toc:
+    if inline_toc and not has_writer_toc:
         parts.append("## Table of Contents\n\n_(auto-generated)_\n")
 
     # Body sections
@@ -676,7 +704,13 @@ def assemble(task_id: str) -> Path:
         # heading anchors is injected uniformly downstream (no broken jump links).
         first_line = md.split("\n", 1)[0].lower()
         if first_line.startswith("##") and "table of contents" in first_line:
+            if not inline_toc:
+                continue  # project layout: no in-article ToC
             md = "## Table of Contents\n\n_(auto-generated)_"
+        if (first_line.startswith("##") and not first_line.startswith("###")
+                and "abstract" not in front_blocks
+                and first_line.lstrip("#").strip().split("{")[0].strip() == "abstract"):
+            continue  # project layout: no Abstract section, even if a writer made one
         parts.append(md.rstrip() + "\n")
 
     # Detect which structural sections already exist in body sections
