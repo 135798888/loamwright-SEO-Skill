@@ -73,8 +73,8 @@ Every PHOTO prompt MUST have these fields:
 
 For `kind: "chart"` slots, do NOT write subject/setting/composition/negative_prompt.
 Emit a `chart_spec` populated with **REAL numbers pulled from research.json** (never
-invented — chart numbers are claims and are fact-checked). The renderer supports four
-types; pick by data shape (`vbar` / `grouped_vbar` / `rangebar` / `table`). Charts render
+invented — chart numbers are claims and are fact-checked). The renderer supports five
+types; pick by data shape (`vbar` / `grouped_vbar` / `rangebar` / `table` / `flow`). Charts render
 locally at 2048×2048 (2× supersample) so labels stay crisp and many-bar charts don't
 collide:
 
@@ -102,6 +102,10 @@ collide:
     # type: table → multi-column comparison / verdict matrix:
     #   {type, title, subtitle, columns:[...], col_frac:[...], status_col:<int|-1>, rows:[[...]], source}
     #   (status_col cells colour-code No/Marginal/Yes)
+    # type: flow → a PROCESS as numbered step cards joined by arrows (sample route,
+    #   tooling route, RFQ-to-delivery). 2-8 steps; label <= ~30 chars, detail <= ~90:
+    #   {type, title, subtitle, steps:[{label, detail}], source}
+    #   Use it instead of an AI illustration whenever a slot explains steps.
     #   ⚠️ TABLE TEXT BUDGET (v3.38.3): keep every CELL <= ~90 chars and every
     #   column HEADER to 1-3 short words (URL-ish examples like
     #   "Subfolder (example.com/de/)" belong in the subtitle, not a header).

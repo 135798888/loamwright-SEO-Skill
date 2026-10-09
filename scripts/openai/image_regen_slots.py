@@ -121,6 +121,15 @@ def _run_real_photo_regen(workspace: Path, project_slug: str, round_n: int,
     return exit_code
 
 
+def _own_library_slots(workspace: Path) -> set[str]:
+    try:
+        data = json.loads((workspace / "images.json").read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        return set()
+    items = data if isinstance(data, list) else data.get("images", [])
+    return {e.get("slot_id") for e in items if isinstance(e, dict) and e.get("source") == "own_library"}
+
+
 # Repo root = .../scripts/openai/image_regen_slots.py -> up 3
 _REPO_ROOT = Path(__file__).resolve().parents[2]
 _WS_ROOT = _REPO_ROOT / "memory" / "workspace"
@@ -167,6 +176,23 @@ def run(*, workspace: Path, requests_file: Path, task_id: str | None,
         else:
             print(f"INPUT ERROR: {e}", file=sys.stderr)
         return 3
+
+    # The project's OWN library photos are real photographs: never let vision QA replace
+    # one with an AI render (that is the defect the library exists to prevent).
+    own = _own_library_slots(workspace)
+    if own:
+        kept = [s for s in specs if s.slot not in own]
+        if not kept:
+            payload = {"ok": True, "round": round_n, "regenerated_slots": [],
+                       "refused_slots": sorted(own & {s.slot for s in specs}),
+                       "note": "own_library photos are real photos and are never regenerated",
+                       "exit_code": 0}
+            (workspace / f"image-qa-regen-result-r{round_n}.json").write_text(
+                json.dumps(payload, indent=2, ensure_ascii=False), encoding="utf-8")
+            if json_mode:
+                print(json.dumps(payload, ensure_ascii=False))
+            return 0
+        specs = kept
 
     # Rule-7 wiring: real-photo projects re-source a REAL photo instead of re-rendering
     # the pack via text-to-image (which garbles brand glyphs). See _real_photo_project.

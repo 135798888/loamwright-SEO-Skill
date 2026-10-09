@@ -48,6 +48,7 @@ from typing import Literal
 
 from scripts._core import file_bus
 from scripts._core import heading_anchor
+from scripts._core.caption_guard import reader_caption
 from scripts.build.markdown_to_html import convert as md_to_html, ConvertOptions, split_frontmatter, strip_scaffold_markers
 from scripts.wordpress import wp_taxonomy, wp_media
 from scripts.wordpress.wp_client import WPClient, WPApiError
@@ -304,26 +305,46 @@ def publish(
 
         # ── Step 4: Upload images (skipped in defer_images mode) ─────
         slot_to_media: dict[str, wp_media.WPMedia] = {}
+        reused_media_ids: set[int] = set()
         featured_id: int | None = None
 
         if not dry_run and not inp.defer_images:
             for img in inp.images:
                 path = Path(img["path"])
+                # A photo already in the site's media library (own photo library entry):
+                # attach the existing item instead of uploading a duplicate, and never let
+                # a rollback delete it — it may be in use on product pages.
+                if isinstance(img.get("wp_media_id"), int):
+                    try:
+                        m = wp_media._parse_media(
+                            wp.get(f"/wp/v2/media/{img['wp_media_id']}").json_data)
+                    except Exception as e:
+                        result.error = f"Library media {img['wp_media_id']} not found: {e}"
+                        return _rollback(wp, result, slot_to_media, rollback_on_failure,
+                                         keep_ids=reused_media_ids)
+                    reused_media_ids.add(m.id)
+                    slot_to_media[img["slot_id"]] = m
+                    result.media_ids.append(m.id)
+                    if img.get("is_featured"):
+                        featured_id = m.id
+                    continue
                 try:
                     m = wp_media.upload(
                         wp, path,
                         alt_text=img.get("alt", ""),
-                        caption=img.get("caption", ""),
+                        caption=reader_caption(img.get("caption", "")),
                         title=img.get("title", ""),
                         description=img.get("description", ""),
                         check_existing_by_filename=True,
                         # Default WebP conversion + size-cap (wp_media.DEFAULT_UPLOAD_FORMAT).
                         # Per-image opt-out via images.json "upload_format": "original"/"png"/"jpeg".
                         upload_format=img.get("upload_format", ""),
+                        reused_ids=reused_media_ids,
                     )
                 except Exception as e:
                     result.error = f"Media upload failed for {path}: {e}"
-                    return _rollback(wp, result, slot_to_media, rollback_on_failure)
+                    return _rollback(wp, result, slot_to_media, rollback_on_failure,
+                                     keep_ids=reused_media_ids)
                 slot_to_media[img["slot_id"]] = m
                 result.media_ids.append(m.id)
                 if img.get("is_featured"):
@@ -583,7 +604,7 @@ def publish(
             result.featured_media_id = featured_id
         except WPApiError as e:
             result.error = f"Post {'update' if existing_post_id else 'creation'} failed: {e}"
-            return _rollback(wp, result, slot_to_media, rollback_on_failure)
+            return _rollback(wp, result, slot_to_media, rollback_on_failure, keep_ids=reused_media_ids)
 
         # ── Step 7b: Set SEO meta (SEOPress native API, Yoast OR Rank Math) ─────
         if h.get("seo_plugin") == "seopress":
@@ -618,7 +639,7 @@ def publish(
                 result.status = inp.status
             except WPApiError as e:
                 result.error = f"Publish failed: {e}"
-                return _rollback(wp, result, slot_to_media, rollback_on_failure)
+                return _rollback(wp, result, slot_to_media, rollback_on_failure, keep_ids=reused_media_ids)
         else:
             # Stayed as draft
             result.status = "draft"
@@ -1054,13 +1075,19 @@ def _rollback(
     result: PublishResult,
     slot_to_media: dict[str, "wp_media.WPMedia"],
     do_rollback: bool,
+    keep_ids: set[int] | None = None,
 ) -> PublishResult:
-    """Delete uploaded media if publish failed mid-way."""
+    """Delete media THIS publish uploaded if it failed mid-way.
+
+    Media that already existed (filename-dedupe hits, own-library photos) is never
+    deleted: it predates this publish and may be used elsewhere on the site."""
     if not do_rollback:
         return result
     result.rollback_attempted = True
     failed = 0
     for media in slot_to_media.values():
+        if keep_ids and media.id in keep_ids:
+            continue
         try:
             wp_media.delete_media(wp, media.id, force=True)
         except Exception:
@@ -1858,7 +1885,7 @@ def _wrap_images_in_figures(html: str, body_images: list[dict],
             return full_tag
         img_dict, media = url_to_img[src]
         mid = media.id
-        cap = _html.escape(img_dict.get("caption", ""))
+        cap = _html.escape(reader_caption(img_dict.get("caption", "")))
         # Preserve any existing class/loading/decoding from the <img>
         attrs = dict(re.findall(r'(\w+)="([^"]*)"', full_tag))
         # Standardize attributes
