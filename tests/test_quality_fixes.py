@@ -325,3 +325,40 @@ def test_owner_retracted_facts_are_removed_from_the_server_copy(project):
     assert "export_markets" not in facts and facts["founded"] == "2021"
     brief = project_brief(project)
     assert "North America" not in brief and "never claim export history" in brief.lower()
+
+
+def test_agent_is_warned_before_its_turns_run_out():
+    """Seam: the real agent loop with a model that keeps investigating until it is told
+    its turns are running out (image-visual-qa, 2026-10-10: 3 x 40 turns, no report)."""
+    from hermes_adapter import agent as ag
+    from tests.test_hermes_adapter import _cfg
+    tid = "testqa_a1b2c3d4"
+    ws = WS_ROOT / tid
+    ws.mkdir(parents=True, exist_ok=True)
+    report = ws / "image-qa-report.json"
+    state = {"warned": False, "wrote": False}
+
+    def tc(name, args):
+        return SimpleNamespace(message={"role": "assistant", "content": None, "tool_calls": [
+            {"id": name, "type": "function", "function": {"name": name, "arguments": json.dumps(args)}}]},
+            finish_reason="tool_calls")
+
+    class Investigator:
+        def chat(self, *, model, messages, tools, stage, max_attempts=6):
+            last = messages[-1]
+            if isinstance(last.get("content"), str) and "TURN BUDGET" in last["content"]:
+                state["warned"] = True
+            if state["wrote"]:
+                return SimpleNamespace(message={"role": "assistant", "content": "done"}, finish_reason="stop")
+            if state["warned"]:
+                state["wrote"] = True
+                return tc("Write", {"file_path": str(report), "content": "{}"})
+            return tc("Glob", {"pattern": "*.md"})
+    try:
+        res = ag.run_agent(cfg=_cfg(), client=Investigator(), role="qa", stage="image-visual-qa",
+                           system_prompt="s", user_prompt="u", tools=["Glob", "Write"], max_turns=20,
+                           task_id=tid, project_slug=None, expected_outputs=[str(report)])
+        assert state["warned"] and report.exists()
+        assert res.missing_outputs == [] and res.stopped_reason == "done"
+    finally:
+        shutil.rmtree(ws, ignore_errors=True)
