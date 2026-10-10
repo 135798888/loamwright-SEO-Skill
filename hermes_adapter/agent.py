@@ -239,8 +239,30 @@ def run_agent(*, cfg: LLMConfig, client: ChatClient, role: str, stage: str,
                 {"type": "text", "text": f"Image from Read({img.path}):"},
                 {"type": "image_url", "image_url": {"url": f"data:{img.mime};base64,{img.b64}"}},
             ]})
+        warning = _turn_budget_warning(max_turns - turns, max_turns, missing())
+        if warning:
+            messages.append({"role": "user", "content": warning})
 
     return AgentResult(final_text, turns, ctx.files_written, missing(), "max_turns")
+
+
+def _turn_budget_warning(remaining: int, max_turns: int, miss: list[str]) -> str | None:
+    """Tell an agent its turns are running out while its required outputs are still missing.
+
+    image-visual-qa spent all 40 turns inspecting and regenerating images and never wrote
+    image-qa-report.json — three attempts in a row, so the whole article failed
+    (2026-10-10). An agent cannot see its own turn budget; this makes it visible in time
+    to write the deliverable with what it already knows."""
+    if not miss:
+        return None
+    first = max(3, min(8, max_turns // 5))
+    if remaining not in (first, 2):
+        return None
+    return (f"TURN BUDGET: {remaining} turn(s) left. These required outputs do not exist yet:\n"
+            + "\n".join(f"- {m}" for m in miss)
+            + "\nStop investigating now. Write them in your next turn from what you already know "
+              "(for a QA report: mark anything you did not finish as accept_with_warning with a "
+              "note). A missing output fails the whole stage.")
 
 
 def run_subagent(*, cfg: LLMConfig, client: ChatClient, subagent_type: str, stage: str,

@@ -164,14 +164,21 @@ class ChatClient:
                    "Content-Type": "application/json", **self.cfg.extra_headers}
 
         last_err = ""
-        for attempt in range(1, max_attempts + 1):
+        # Short calls (--check) keep their small attempt budget; pipeline calls also wait out
+        # a relay overload for up to overload_wait_minutes before giving up.
+        deadline = time.time() + (self.cfg.overload_wait_minutes * 60 if max_attempts >= 6 else 0)
+        used_model = model
+        fallback = self.cfg.fallback_models.get(model)
+        attempt = 0
+        while True:
+            attempt += 1
             try:
                 with httpx.Client(timeout=self.cfg.timeout_seconds) as client:
                     r = client.post(self._url(), headers=headers, content=json.dumps(body))
                 if r.status_code in _TRANSIENT_STATUS:
                     last_err = f"HTTP {r.status_code}: {r.text[:300]}"
                     raise _Retry()
-                if r.status_code == 400 and param_fixes < 3 and self._adapt_after_400(model, body, r.text):
+                if r.status_code == 400 and param_fixes < 3 and self._adapt_after_400(used_model, body, r.text):
                     param_fixes += 1
                     continue  # re-send immediately with the corrected parameter
                 if r.status_code >= 400:
@@ -194,16 +201,26 @@ class ChatClient:
                 pt = int(usage.get("prompt_tokens") or usage.get("input_tokens") or 0)
                 ct = int(usage.get("completion_tokens") or usage.get("output_tokens") or 0)
                 if self.tracker:
-                    self.tracker.record(model, pt, ct, stage)
+                    self.tracker.record(used_model, pt, ct, stage)
                 return ChatResult(message=msg, finish_reason=str(choice.get("finish_reason") or ""),
                                   prompt_tokens=pt, completion_tokens=ct)
             except (_Retry, httpx.TransportError, httpx.TimeoutException, json.JSONDecodeError) as e:
                 if not isinstance(e, _Retry):
                     last_err = f"{type(e).__name__}: {e}"
-                if attempt == max_attempts:
+                if fallback and used_model == model and attempt >= 3:
+                    used_model = fallback
+                    body["model"] = fallback
+                    for k in ("max_tokens", "max_completion_tokens"):
+                        body.pop(k, None)
+                    body[self._token_param(fallback)] = self.cfg.max_output_tokens
+                    for k in self._learned_drop.get(fallback, set()):
+                        body.pop(k, None)
+                if attempt >= max_attempts and time.time() >= deadline:
                     break
                 time.sleep(min(60.0, (2 ** attempt) + random.random() * 2))
-        raise LLMError(f"LLM call failed after {max_attempts} attempts: {last_err}")
+        raise LLMError(f"LLM call failed after {attempt} attempts"
+                       + (f" (incl. fallback {used_model})" if used_model != model else "")
+                       + f": {last_err}")
 
 
 class _Retry(Exception):
