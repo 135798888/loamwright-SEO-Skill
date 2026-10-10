@@ -9,6 +9,11 @@ api_key_env: LW_LLM_API_KEY                       # read the key from this env v
 # api_key: sk-...                                 # …or put it here (file stays outside the repo)
 
 timeout_seconds: 600
+# Relay overloads ("server_is_overloaded") can last many minutes. Keep retrying this long
+# before failing the article, and after 3 failed attempts switch to the fallback model.
+overload_wait_minutes: 20
+fallback_models:
+  gpt-6.1-sol: gpt-5.6-sol
 max_output_tokens: 16000      # long sections + JSON artifacts need room; lower only if the relay rejects it
 vision: true                  # image-visual-qa needs to SEE images; set false if your model can't
 # temperature: 0.4            # omit to use the model default

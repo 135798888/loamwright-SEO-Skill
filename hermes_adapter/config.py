@@ -49,6 +49,10 @@ class LLMConfig:
     second_opinion_criteria: list[str] = field(default_factory=list)
     second_opinion_rounds: int = 2
     extra_headers: dict[str, str] = field(default_factory=dict)
+    # relay overloads (502 server_is_overloaded) can last many minutes: keep retrying for up
+    # to this long, and after a few failures switch to the model's configured fallback.
+    overload_wait_minutes: float = 20.0
+    fallback_models: dict[str, str] = field(default_factory=dict)
     # limits
     max_llm_usd_per_article: Decimal = Decimal(15)
     writer_parallelism: int = 4
@@ -149,6 +153,8 @@ def load_config(path: Path | None = None) -> LLMConfig:
         second_opinion_criteria=[str(c) for c in (so.get("criteria") or [])],
         second_opinion_rounds=int(so.get("max_rounds", 2)),
         extra_headers={str(k): str(v) for k, v in (raw.get("extra_headers") or {}).items()},
+        overload_wait_minutes=float(raw.get("overload_wait_minutes", 20)),
+        fallback_models={str(k): str(v) for k, v in (raw.get("fallback_models") or {}).items() if v},
         max_llm_usd_per_article=Decimal(str(limits.get("max_llm_usd_per_article", "15"))),
         writer_parallelism=int(limits.get("writer_parallelism", 4)),
         max_turns_cap=int(limits.get("max_turns_cap", 120)),
