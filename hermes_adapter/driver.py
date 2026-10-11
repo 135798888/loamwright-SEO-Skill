@@ -175,7 +175,7 @@ class Driver:
         self.bash_errors: dict[str, int] = defaultdict(int)
         self.retry_notes: dict[str, str] = {}
         self.second_opinion_done = False
-        self.editorial_done = False
+        self.prereview_done = False
         self.image_fork_reruns = 0
 
     # ── logging ─────────────────────────────────────────────────
@@ -209,26 +209,25 @@ class Driver:
 
                 # Second opinion: right after the runner ACCEPTED the independent reviewer
                 # (anything but an ERROR on that stage), before pre-publish / publish.
-                reviewer_accepted = (just_completed == "independent-reviewer"
-                                     and not (action == "ERROR" and stage == "independent-reviewer"))
-                # Project editorial rules (business-context.editorial): deterministic, cheap,
-                # and BEFORE the second opinion so the cross-model judge sees the fixed draft.
-                if reviewer_accepted and not self.editorial_done:
-                    self.editorial_done = True
-                    stop = self._editorial()
-                    if stop:
-                        return self._finish("failed", stop, "editorial-check")
-                if reviewer_accepted and not self.second_opinion_done:
-                    self.second_opinion_done = True
-                    stop = self._second_opinion()
-                    if stop:
-                        return self._finish("failed", stop, "second-opinion")
-
                 if action == "COMPLETE":
                     return self._finish("complete", "pipeline complete (draft + live checks passed)")
 
                 if action == "DISPATCH_LLM" and self._project_skips(r):
                     continue
+                # Project editorial rules + cross-model second opinion run BEFORE the
+                # independent reviewer, so the reviewer scores the draft that ships. Run after
+                # it, their repairs left draft.md newer than review.json and pre-publish
+                # gate_freshness failed (2026-10-10).
+                if action == "DISPATCH_LLM" and stage == "independent-reviewer" and not self.prereview_done:
+                    self.prereview_done = True
+                    stop = self._editorial()
+                    if stop:
+                        return self._finish("failed", stop, "editorial-check")
+                    if not self.second_opinion_done:
+                        self.second_opinion_done = True
+                        stop = self._second_opinion()
+                        if stop:
+                            return self._finish("failed", stop, "second-opinion")
                 if action == "DISPATCH_LLM":
                     if self._dispatch(r):
                         completed_llm = stage
@@ -524,6 +523,11 @@ class Driver:
     def _repair_gate(self, stage: str, r: dict[str, Any]) -> None:
         gate = str(r.get("gate") or "")
         self.event("repair", stage=stage, round=self.gate_repairs[stage], gate=gate[:500])
+        if stage == "pre-publish-gate" and "gate_freshness" in gate and "review.json" in gate:
+            # The draft changed after it was reviewed. Editing the draft again cannot fix
+            # that; a fresh review of the current draft can.
+            self._redispatch_reviewer(gate)
+            return
         if stage == "section-completeness-check":
             res = self._read_json("section-completeness.json") or {}
             missing = res.get("missing_indices") or []
@@ -545,6 +549,28 @@ class Driver:
             self.event("repair_done", stage=stage, turns=res.turns)
             return
         self._generic_repair(stage, gate, r.get("stdout_tail") or "")
+
+    def _redispatch_reviewer(self, why: str) -> bool:
+        """Re-run the independent reviewer on the current draft (stale review.json).
+
+        Returns True when the runner then accepts it. The reviewer's own content gate
+        (score >= target) still applies; a low score gets one repair + re-review."""
+        from scripts.pipeline import orchestrator as orch
+        stage = next(s for s in orch.STAGES if s.name == "independent-reviewer")
+        state = json.loads((self.ws / "state.json").read_text(encoding="utf-8"))
+        prompt = orch._render_dispatch_prompt(stage.dispatch_prompt or "", self.task_id, state)
+        for attempt in range(2):
+            self.event("reviewer_redispatch", why=why[:300], attempt=attempt + 1)
+            run_subagent(cfg=self.cfg, client=self.client, subagent_type=stage.subagent_type,
+                         stage=stage.name, prompt=prompt, task_id=self.task_id,
+                         project_slug=self.slug, expected_outputs=[str(self.ws / "review.json")])
+            v = orch.verify_stage(self.task_id, stage.name)
+            if v.get("passed"):
+                return True
+            if attempt == 0:
+                self._generic_repair(stage.name, f"{v.get('reason')}\n(see review.json for the "
+                                     "score and the specific problems to fix)", "")
+        return False
 
     def _generic_repair(self, stage: str, gate: str, tail: str) -> None:
         ws_rel = f"memory/workspace/{self.task_id}"
