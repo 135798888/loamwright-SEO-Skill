@@ -362,3 +362,15 @@ def test_agent_is_warned_before_its_turns_run_out():
         assert res.missing_outputs == [] and res.stopped_reason == "done"
     finally:
         shutil.rmtree(ws, ignore_errors=True)
+
+
+def test_gate_failure_names_the_failing_check_not_the_passing_ones(tmp_path):
+    from scripts.pipeline.run_pipeline import _GATE_STAGES, _gate_passed
+    stage = next(k for k, v in _GATE_STAGES.items() if v == "pre-publish-gate-result.json")
+    results = [{"gate": g, "status": "PASS", "detail": "x" * 60} for g in
+               ("draft", "meta", "citations", "citation_inject", "images", "image_qa")]
+    results.append({"gate": "cta_module", "status": "FAIL", "reason": "CTA heading reworded"})
+    (tmp_path / "pre-publish-gate-result.json").write_text(json.dumps({"passed": False, "results": results}))
+    ok, reason = _gate_passed(tmp_path, stage)
+    assert ok is False and "cta_module" in reason and "CTA heading reworded" in reason
+    assert "'draft'" not in reason

@@ -177,7 +177,14 @@ def _gate_passed(ws: Path, stage_name: str) -> tuple[bool, str]:
         return False, f"{fname} unreadable: {e}"
     if isinstance(data, dict) and data.get("passed") is False:
         defects = data.get("defects") or data.get("missing_indices") or data.get("results") or []
-        return False, f"{stage_name} found defect(s): {str(defects)[:300]}"
+        # Multi-gate results list every check, PASS ones first; a 300-char cut showed only
+        # PASS entries and hid the failing one from the repair agent and the operator
+        # (pre-publish-gate, 2026-10-10). Report the non-passing entries.
+        if isinstance(defects, list):
+            bad = [d for d in defects if not (isinstance(d, dict)
+                                              and str(d.get("status", "")).upper() in ("PASS", "SKIP", "OK"))]
+            defects = bad or defects
+        return False, f"{stage_name} found defect(s): {str(defects)[:1200]}"
     return True, ""
 
 
