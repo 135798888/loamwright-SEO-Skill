@@ -131,7 +131,7 @@ def test_editorial_check_catches_post_289_and_passes_clean_text(project):
     assert check(clean, "custom claw clips wholesale", cfg)["passed"] is True
 
 
-def test_driver_runs_editorial_gate_after_review_and_repairs(task, monkeypatch):
+def test_driver_runs_editorial_gate_and_repairs(task, monkeypatch):
     from hermes_adapter import driver as drv
     from tests.test_hermes_adapter import _cfg
     tid, ws = task
@@ -374,3 +374,61 @@ def test_gate_failure_names_the_failing_check_not_the_passing_ones(tmp_path):
     ok, reason = _gate_passed(tmp_path, stage)
     assert ok is False and "cta_module" in reason and "CTA heading reworded" in reason
     assert "'draft'" not in reason
+
+
+def test_editorial_and_second_opinion_run_before_the_reviewer_scores_the_draft(task, monkeypatch):
+    """2026-10-10: their repairs ran AFTER review, so pre-publish gate_freshness failed
+    (draft.md newer than review.json). The reviewer must see the final draft."""
+    from hermes_adapter import driver as drv
+    from tests.test_hermes_adapter import _cfg
+    tid, ws = task
+    (ws / "draft.md").write_text(POST_289, encoding="utf-8")
+    order: list[str] = []
+
+    def fake_repair(self, stage, gate, tail):
+        order.append(f"repair:{stage}")
+        (ws / "draft.md").write_text("# x\n\n## What to send us\n\nOur MOQ is 1,000 pieces per style.\n")
+    monkeypatch.setattr(drv.Driver, "_generic_repair", fake_repair)
+    monkeypatch.setattr(drv.Driver, "_second_opinion", lambda self: order.append("second-opinion"))
+    monkeypatch.setattr(drv.Driver, "_dispatch", lambda self, r: order.append(f"dispatch:{r['stage']}") or True)
+    seq = iter([{"action": "DISPATCH_LLM", "stage": "independent-reviewer", "subagent_type": "",
+                 "expected_outputs": []}, {"action": "COMPLETE"}])
+    rep = drv.Driver(_cfg(), tid, pipeline_drive=lambda *a, **k: next(seq)).run()
+    assert rep.status == "complete"
+    assert order == ["repair:editorial-check", "second-opinion", "dispatch:independent-reviewer"]
+
+
+def test_stale_review_is_fixed_by_a_fresh_review_not_by_editing_the_draft(task, monkeypatch):
+    from hermes_adapter import driver as drv
+    from tests.test_hermes_adapter import _cfg
+    tid, ws = task
+    calls: list[str] = []
+    monkeypatch.setattr(drv.Driver, "_generic_repair", lambda self, s, g, t: calls.append("edit-draft"))
+    monkeypatch.setattr(drv.Driver, "_redispatch_reviewer", lambda self, why: calls.append("re-review") or True)
+    gate = ("pre-publish-gate found defect(s): [{'gate': 'gate_freshness', 'status': 'FAIL', 'reason': "
+            "'draft.md is NEWER than review.json'}]")
+    seq = iter([{"action": "GATE_FAILED", "stage": "pre-publish-gate", "gate": gate}, {"action": "COMPLETE"}])
+    rep = drv.Driver(_cfg(), tid, pipeline_drive=lambda *a, **k: next(seq)).run()
+    assert rep.status == "complete" and calls == ["re-review"]
+
+
+def test_reviewer_redispatch_uses_the_real_stage_prompt_and_reverifies(task, monkeypatch):
+    from hermes_adapter import driver as drv
+    from scripts.pipeline import orchestrator as orch
+    from tests.test_hermes_adapter import _cfg
+    tid, ws = task
+    seen: dict[str, Any] = {}
+
+    def fake_subagent(**kw):
+        seen.update(kw)
+        return SimpleNamespace(turns=1, missing_outputs=[], stopped_reason="done")
+    verdicts = iter([{"passed": False, "reason": "review.json score 70 < 80"}, {"passed": True}])
+    repairs: list[str] = []
+    monkeypatch.setattr(drv, "run_subagent", fake_subagent)
+    monkeypatch.setattr(orch, "verify_stage", lambda t, s: next(verdicts))
+    monkeypatch.setattr(drv.Driver, "_generic_repair", lambda self, s, g, t: repairs.append(g))
+    ok = drv.Driver(_cfg(), tid, pipeline_drive=lambda *a, **k: {})._redispatch_reviewer("stale")
+    assert ok is True
+    assert seen["subagent_type"].endswith("reviewer") and tid in seen["prompt"]
+    assert seen["expected_outputs"] == [str(ws / "review.json")]
+    assert repairs and "70 < 80" in repairs[0]
