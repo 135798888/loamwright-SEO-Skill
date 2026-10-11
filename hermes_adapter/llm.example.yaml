@@ -78,6 +78,8 @@ second_opinion:
 
 # Optional: Telegram report after each article (token can also come from env TG_BOT_TOKEN,
 # chat id from TG_CHAT_ID). If you let Hermes report instead, leave this out.
+# Telegram: a message when each milestone starts and when the article finishes.
+# Without this block the run is silent. Test with: python -m hermes_adapter.run_article --notify-test
 # telegram:
-#   bot_token_env: TG_BOT_TOKEN
+#   bot_token_env: TG_BOT_TOKEN      # env var holding the bot token (or bot_token: "...")
 #   chat_id: "123456789"

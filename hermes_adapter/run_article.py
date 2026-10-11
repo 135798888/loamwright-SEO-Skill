@@ -40,7 +40,7 @@ pin_interpreter_on_path()  # bare `python` in pipeline BASH stages → this venv
 from hermes_adapter.config import ConfigError, load_config
 from hermes_adapter.driver import drive_task
 from hermes_adapter.llm import ChatClient
-from hermes_adapter.notify import format_report, telegram
+from hermes_adapter.notify import ProgressNotifier, format_report, telegram
 from hermes_adapter.task import create_task
 
 
@@ -123,6 +123,8 @@ def main() -> int:
                          "it is moved to <file>.done with the result")
     ap.add_argument("--check", action="store_true", help="validate llm.yaml + endpoint and exit")
     ap.add_argument("--no-notify", action="store_true")
+    ap.add_argument("--notify-test", action="store_true",
+                    help="send one Telegram test message with the llm.yaml telegram settings and exit")
     args = ap.parse_args()
 
     try:
@@ -132,6 +134,13 @@ def main() -> int:
         return 2
     if args.check:
         return _check(cfg)
+    if args.notify_test:
+        configured = bool(cfg.telegram_bot_token and cfg.telegram_chat_id)
+        ok = configured and telegram(cfg, "✅ SEO 文章流程：Telegram 通知测试成功")
+        print(json.dumps({"ok": bool(ok), "configured": configured,
+                          "hint": None if ok else ("set telegram.bot_token_env / chat_id in llm.yaml"
+                                                   if not configured else "Telegram API refused the message")}))
+        return 0 if ok else 2
 
     # One adapter run at a time per server: a cron tick that fires while yesterday's
     # article is still running must not start a second, parallel spend.
@@ -214,7 +223,14 @@ def _run(args, cfg, ap) -> int:
         state = json.loads((_ROOT / "memory" / "workspace" / tid / "state.json").read_text("utf-8"))
         if state.get("project_slug"):
             os.environ["XS_ACTIVE_PROJECT"] = state["project_slug"]
-        rep = drive_task(cfg, tid, on_event=_progress).as_dict()
+        progress = None if args.no_notify else ProgressNotifier(
+            cfg, (state.get("brief") or {}).get("primary_keyword", ""), tid)
+
+        def on_event(ev: dict, _p=progress) -> None:
+            _progress(ev)
+            if _p:
+                _p.on_event(ev)
+        rep = drive_task(cfg, tid, on_event=on_event).as_dict()
         reports.append(rep)
         if not args.no_notify:
             telegram(cfg, format_report(rep))
