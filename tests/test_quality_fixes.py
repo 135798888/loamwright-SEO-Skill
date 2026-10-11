@@ -446,3 +446,11 @@ def test_progress_notifier_sends_each_milestone_once(monkeypatch):
                 "steps": ["chart-render", "image-pipeline-fork"]})
     p.on_event({"kind": "dispatch", "stage": "independent-reviewer"})
     assert len(sent) == 2 and "调研" in sent[0] and "写作" in sent[1]
+
+
+def test_short_table_chart_is_cropped_not_half_blank():
+    from scripts.build import data_chart_png as d
+    img = d.render_table({"title": "Agree the sample specification", "columns": ["A", "B", "C"],
+                          "rows": [["Resin", "Agreed resin", "Which material?"], ["Color", "Physical sample", "Match?"]],
+                          "source": "ClawClipFactory"})
+    assert img.size[0] == d.CANVAS and img.size[1] < d.CANVAS * 0.6

@@ -57,6 +57,11 @@ Order of preference for every image slot:
    claw clip (AI draws the hinge, spring and teeth wrong); a clip may appear only as a small,
    simple icon.
 - Aim for at least two diagrams/charts per article; they carry real information.
+- A comparison that is already a table in the text is NOT also drawn as a "table" chart:
+  readers saw the same table twice. Use image slots for flows, bar or range charts instead.
+- The cover must show the article's topic at a glance (for a sample-approval article: a desk
+  with a sample card, color swatches, a checklist and a few simple clip icons). Abstract
+  color blocks or a lone envelope say nothing and look unfinished.
 - Captions are a short sentence for the reader describing what the image shows. Never put the
   image prompt or style words ("flat vector, no text") in a caption.
 - Real-library photos (source "own_library") must never be regenerated or edited by AI.
