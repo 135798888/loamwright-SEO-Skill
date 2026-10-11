@@ -509,6 +509,11 @@ def render_table(spec, W=CANVAS, H=CANVAS):
         d.line([(left,re_),(right,re_)], fill=LIGHTGREY, width=px(1))
         yy=re_
     d.rectangle([left,y0,right,yy], outline=LIGHTGREY, width=px(1))
+    # A short table on the square canvas left half the image blank (post 304,
+    # 2026-10-11). Crop to the table plus room for the source footer.
+    newH = int(min(H, yy + px(130)))
+    if newH < H:
+        img = img.crop((0, 0, W, newH)); d = ImageDraw.Draw(img); H = newH
     _footer(d, W, H, spec.get("source",""))
     return img
 
