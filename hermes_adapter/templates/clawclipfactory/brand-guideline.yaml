@@ -25,6 +25,9 @@ subjects: >-
   factory building icon, a world map with shipping routes, a buyer's desk with samples and papers.
   A claw clip may appear only as a SMALL, SIMPLE stylized icon (a rounded silhouette), never a
   detailed close-up: image models draw the hinge, spring and teeth wrong.
+prompt_craft: >-
+  Write prompts following references/gpt-image-skill/craft.md (vendored from the MIT
+  gpt-image2-skill prompt library) and the gallery file matching the style.
 slot_guidance: >-
   Describe each slot by what it must show in plain words. A process (sample route, tooling
   route, RFQ steps) is a 'flow' chart with 3-8 steps, not an illustration. Captions are one

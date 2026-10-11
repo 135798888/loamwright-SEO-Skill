@@ -62,6 +62,12 @@ Order of preference for every image slot:
 - The cover must show the article's topic at a glance (for a sample-approval article: a desk
   with a sample card, color swatches, a checklist and a few simple clip icons). Abstract
   color blocks or a lone envelope say nothing and look unfinished.
+- Image-prompt designer: BEFORE writing any photo or illustration prompt, Read
+  references/gpt-image-skill/craft.md and the one gallery file that matches the slot's style
+  (see references/gpt-image-skill/README.md). Write each prompt in that craft: canvas and layout
+  first, concrete capture context (camera, lens, angle), the scene's contents instead of
+  adjectives, material / lighting / palette as separate lines, negation only for strong priors.
+  The image model is set in config, not by you; do not put model names in prompts.
 - Captions are a short sentence for the reader describing what the image shows. Never put the
   image prompt or style words ("flat vector, no text") in a caption.
 - Real-library photos (source "own_library") must never be regenerated or edited by AI.

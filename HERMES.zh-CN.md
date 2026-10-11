@@ -146,6 +146,8 @@ cost_limits:                    # 注意键名：原 README 写的 per_article/d
 >       min_long_edge: 1200      # 接受长边 ≥1200 的图；比例不对会居中裁剪；不会放大
 > ```
 >
+> 如果中转站提供 `gpt-image-2.5-sunburst`（细节更好）或 `gpt-image-2.5-flare`（更快），把上面的 `model:` 换成它即可，接口相同，不用改代码。配图提示词的写法参考 `references/gpt-image-skill/`（取自 MIT 开源的 gpt-image2-skill）。
+>
 > 博客正文宽度一般在 1200px 以内，1672x941 足够清晰。注意：1:1 方图从 1672x941 裁出来只有 941x941，会低于 1200 被拒绝，所以这种中转站只适合 16:9 和 4:3 的图。不加这一行的 provider，行为和原版完全一样。
 >
 > B2B 工厂站建议每篇少放 AI 图（`--image-count 2` 或 `3`）。数据图表是本地渲染的，不花钱。真实工厂照片后期在 WordPress 里替换效果更好。
