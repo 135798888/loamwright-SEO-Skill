@@ -432,3 +432,17 @@ def test_reviewer_redispatch_uses_the_real_stage_prompt_and_reverifies(task, mon
     assert seen["subagent_type"].endswith("reviewer") and tid in seen["prompt"]
     assert seen["expected_outputs"] == [str(ws / "review.json")]
     assert repairs and "70 < 80" in repairs[0]
+
+
+def test_progress_notifier_sends_each_milestone_once(monkeypatch):
+    from hermes_adapter import notify
+    from tests.test_hermes_adapter import _cfg
+    sent: list[str] = []
+    monkeypatch.setattr(notify, "telegram", lambda cfg, text: sent.append(text) or True)
+    p = notify.ProgressNotifier(_cfg(), "custom claw clips wholesale", "t1")
+    p.on_event({"kind": "runner", "action": "DISPATCH_LLM", "stage": "research", "steps": []})
+    p.on_event({"kind": "runner", "action": "DISPATCH_LLM", "stage": "research", "steps": []})
+    p.on_event({"kind": "runner", "action": "DISPATCH_LLM", "stage": "section-drafter",
+                "steps": ["chart-render", "image-pipeline-fork"]})
+    p.on_event({"kind": "dispatch", "stage": "independent-reviewer"})
+    assert len(sent) == 2 and "调研" in sent[0] and "写作" in sent[1]

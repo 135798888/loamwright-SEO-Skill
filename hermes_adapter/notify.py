@@ -44,3 +44,34 @@ def format_report(rep: dict) -> str:
     if rep.get("unpriced_models"):
         lines.append(f"⚠ 未配置单价的模型: {', '.join(rep['unpriced_models'])}")
     return "\n".join(lines)
+
+
+# Stages worth a progress message (Chinese labels for the owner's Telegram).
+MILESTONES = {
+    "research": "调研", "outline-architect": "大纲", "section-drafter": "写作",
+    "fact-check-and-citation": "事实核查", "independent-reviewer": "审稿",
+    "image-visual-qa": "图片质检", "pre-publish-gate": "发布前检查",
+    "wordpress-publisher": "创建 WordPress 草稿",
+}
+
+
+class ProgressNotifier:
+    """Sends one Telegram line the first time each milestone stage is reached.
+
+    A background run used to be silent from start to finish, so the owner could not tell
+    a long stage from a dead process (2026-10-11)."""
+
+    def __init__(self, cfg: LLMConfig, keyword: str, task_id: str):
+        self.cfg, self.keyword, self.task_id = cfg, keyword, task_id
+        self.seen: set[str] = set()
+
+    def on_event(self, ev: dict) -> bool:
+        if ev.get("kind") != "runner":
+            return False
+        stages = [ev.get("stage")] + list(ev.get("steps") or [])
+        sent = False
+        for st in stages:
+            if st in MILESTONES and st not in self.seen:
+                self.seen.add(st)
+                sent = telegram(self.cfg, f"⏳ {self.keyword}：进入「{MILESTONES[st]}」（{self.task_id}）") or sent
+        return sent
