@@ -39,7 +39,10 @@ DEFAULT_CRITERIA = [
     "'confirm with the supplier' or 'approve a sample', or if FAQ questions are generic "
     "consumer questions rather than what a wholesale buyer asks about this topic.",
     "KEYWORD INTENT: The article actually answers the search intent of the primary keyword "
-    "within the first sections, not only in passing.",
+    "within the first sections, not only in passing. Fail if the question most searchers of "
+    "that keyword have (e.g. for 'claw clip sizes': which sizes exist and how big they are) "
+    "is not answered with concrete figures early, even if the article covers a related "
+    "specification process well.",
     "NATURAL WRITING: Reads like an experienced industry writer, not template AI prose "
     "(repetitive structure, empty superlatives, hedging, filler transitions). Fail if the "
     "same caveat (e.g. 'X does not prove Y') is restated in several sections.",

@@ -49,6 +49,13 @@ them knowing more AND seeing why talking to this factory is a sensible next step
 - An "Abstract" section or an in-article table of contents (the theme has a sidebar TOC).
 
 ## Structure that works here
+- Answer the searcher's actual question first, with concrete figures. For a head term such as
+  "claw clip sizes" that is a size chart (common size names with typical lengths in mm and
+  inches, what each suits, where our models sit), sourced; for "types" it is the types. The
+  factory angle (how to specify it, how we make it) comes after that answer, not instead of it.
+- Write for a buyer, not a QA manual: no glossary of everyday terms, no step-by-step
+  measuring or inspection procedure longer than the buyer needs to brief us. Aim for
+  1,800-2,500 words; cut sections that only restate process.
 - Open with the direct answer (TL;DR, 2-3 sentences, include one concrete number from the facts).
 - At least one comparison or specification table and, where data allows, one chart.
 - A section showing how WE do it (our sample route, our QC checks, our tooling route) with the
