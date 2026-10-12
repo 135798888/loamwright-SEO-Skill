@@ -69,6 +69,12 @@ def drop_nulls(obj: Any) -> Any:
     return obj
 
 
+# Sections that are pipeline rules shipped with the adapter, not facts the owner fills in.
+# The template copy replaces the server copy, or a new rule (a banned pattern added to an
+# existing list) would never reach a project that was bootstrapped before it.
+TEMPLATE_OWNED_KEYS = ("editorial",)
+
+
 def merge_keep_existing(template: Any, existing: Any) -> Any:
     """Deep merge: an existing, filled-in value wins; the template fills gaps.
 
@@ -149,11 +155,16 @@ def install(template: Path, *, allow_todo: bool, force: bool) -> tuple[str, list
         # Facts filled in on the server win over the template; the template only adds
         # keys the server copy does not have yet (or still has as TODO/empty).
         existing = json.loads(dst.read_text(encoding="utf-8"))
+        template_bc = bc
         bc = merge_keep_existing(bc, existing)
+        for key in TEMPLATE_OWNED_KEYS:
+            if key in template_bc:
+                bc[key] = template_bc[key]
         errors = validate_business_context(drop_nulls(bc))
         if errors:
             raise SystemExit("merged business-context.json fails the schema:\n  - " + "\n  - ".join(errors))
-        notes.append("merged into the existing business-context.json (existing values kept)")
+        notes.append("merged into the existing business-context.json (existing facts kept; "
+                     f"rule sections {', '.join(TEMPLATE_OWNED_KEYS)} taken from the template)")
     bc = drop_nulls(bc)
     dst.write_text(json.dumps(bc, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
 

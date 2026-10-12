@@ -34,11 +34,15 @@ DEFAULT_CRITERIA = [
     "COMPANY FACTS block. No statistic that looks invented or is stated without a source.",
     "BUYER VALUE: Useful to a B2B wholesale buyer / brand owner / importer — concrete "
     "specifications, costs, MOQ/lead-time logic, sourcing risks, decision criteria — not "
-    "generic consumer-level filler.",
+    "generic consumer-level filler. Fail if the article never gives the trade's own "
+    "specification terms or concrete options for its topic and its main advice is only "
+    "'confirm with the supplier' or 'approve a sample', or if FAQ questions are generic "
+    "consumer questions rather than what a wholesale buyer asks about this topic.",
     "KEYWORD INTENT: The article actually answers the search intent of the primary keyword "
     "within the first sections, not only in passing.",
     "NATURAL WRITING: Reads like an experienced industry writer, not template AI prose "
-    "(repetitive structure, empty superlatives, hedging, filler transitions).",
+    "(repetitive structure, empty superlatives, hedging, filler transitions). Fail if the "
+    "same caveat (e.g. 'X does not prove Y') is restated in several sections.",
 ]
 
 _SYSTEM = """You are an independent senior editor at a B2B trade publication, giving a SECOND

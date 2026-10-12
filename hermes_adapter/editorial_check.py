@@ -13,6 +13,15 @@ Config keys (all optional):
     banned_h2_patterns         regexes matched against H2 text
     max_exact_keyword_uses     cap on exact primary-keyword occurrences in the body
     max_near_duplicate_sentences  cap on sentence pairs that say the same thing
+    max_hedge_sentences        cap on "X does not prove / is not a universal ..." caveats
+    max_keyword_openers        cap on sentences opening "For <keyword>, ..."
+    max_internal_links         cap on links to our own site (each page is linked once)
+
+Post 318 (2026-10-12) passed the first four checks and still read like a compliance memo:
+about 25 sentences restated that a finish label "does not prove" hold or scratch resistance,
+three sentences opened "For matte vs glossy claw clips, ...", and 13 internal links with
+anchors such as "final resin" sat in 2,000 words. Paraphrases slip past the near-duplicate
+check, so the caveat count is measured directly.
 """
 from __future__ import annotations
 
@@ -60,6 +69,71 @@ def _tokens(s: str) -> set[str]:
     return {w for w in _WORD.findall(s.lower()) if w not in _STOP}
 
 
+_HEDGE_NEG = re.compile(r"\b(not|no|neither|nor|cannot|can't|without|doesn't|don't|isn't)\b", re.I)
+_HEDGE_CLAIM = re.compile(
+    r"\b(prove[sn]?|proving|proof|establish(es|ed)?|guarantee[sd]?|universal|automatically|"
+    r"evidence|substitute|stand in|infer(red)?|assumed?)\b", re.I)
+
+
+def hedge_sentences(sentences: list[str]) -> list[str]:
+    """Sentences that warn what something does NOT prove/establish/guarantee."""
+    return [s for s in sentences if _HEDGE_NEG.search(s) and _HEDGE_CLAIM.search(s)]
+
+
+def keyword_openers(sentences: list[str], keyword: str) -> list[str]:
+    """Sentences that open with the exact keyword as a noun phrase: "For <kw>, ..."."""
+    if not keyword:
+        return []
+    pat = re.compile(r"^(?:[A-Za-z]+\s+){0,2}" + re.escape(keyword) + r"\s*,", re.I)
+    return [s for s in sentences if pat.match(s)]
+
+
+_LINK = re.compile(r"(?<!!)\[([^\]]+)\]\(([^)\s]+)[^)]*\)")
+
+
+def _without_cta_blocks(body: str) -> str:
+    """Drop CTA modules (heading classified as a CTA component + its paragraph):
+    their button link is the conversion element, not an in-text link."""
+    try:
+        from scripts._core.component_headings import classify_heading
+    except ImportError:  # pragma: no cover - plugin layout always has it
+        return body
+    out: list[str] = []
+    skipping = False
+    for block in re.split(r"\n{2,}", body):
+        m = re.match(r"^#{2,3}\s+(.+)$", block.strip())
+        if m:
+            comp = classify_heading(re.sub(r"\s*\{#[^}]*\}\s*$", "", m.group(1)))
+            skipping = bool(comp and comp.startswith("cta"))
+            if skipping:
+                continue
+        elif skipping:
+            skipping = False   # the one CTA paragraph
+            continue
+        out.append(block)
+    return "\n\n".join(out)
+
+
+def internal_links(body: str, site_url: str) -> list[tuple[str, str]]:
+    """(anchor, normalized target) for every in-text link to our own site (CTA modules excluded)."""
+    body = _without_cta_blocks(body)
+    host = re.sub(r"^https?://(www\.)?", "", (site_url or "").lower()).strip("/")
+    out: list[tuple[str, str]] = []
+    for m in _LINK.finditer(body):
+        url = m.group(2).strip().lower()
+        if url.startswith("#"):
+            continue
+        if url.startswith("/"):
+            path = url
+        elif host and re.match(r"^https?://(www\.)?" + re.escape(host) + r"(/|$)", url):
+            path = re.sub(r"^https?://[^/]+", "", url) or "/"
+        else:
+            continue
+        path = path.split("#")[0].split("?")[0].rstrip("/") or "/"
+        out.append((m.group(1), path))
+    return out
+
+
 def near_duplicates(sentences: list[str], threshold: float = 0.7) -> list[tuple[str, str]]:
     toks = [_tokens(s) for s in sentences]
     pairs: list[tuple[str, str]] = []
@@ -104,8 +178,43 @@ def check(markdown: str, primary_keyword: str, cfg: dict[str, Any]) -> dict[str,
                            "excerpt": f"{len(dups)} sentence pairs repeat the same point (limit {cap})",
                            "pairs": [list(p) for p in dups[:8]]})
 
+    sentences = _sentences(plain)
+    hedges = hedge_sentences(sentences)
+    cap = cfg.get("max_hedge_sentences")
+    if isinstance(cap, int) and len(hedges) > cap:
+        violations.append({"rule": "over_hedging",
+                           "excerpt": f"{len(hedges)} sentences warn what something does not prove or "
+                                      f"guarantee (limit {cap}); state each limitation once where it "
+                                      f"matters and replace the rest with what the buyer should do",
+                           "sentences": hedges[:12]})
+
+    openers = keyword_openers(sentences, primary_keyword)
+    cap = cfg.get("max_keyword_openers")
+    if isinstance(cap, int) and len(openers) > cap:
+        violations.append({"rule": "keyword_opener",
+                           "excerpt": f"{len(openers)} sentences open with '{primary_keyword},' (limit {cap}); "
+                                      f"start them with the point instead",
+                           "sentences": openers[:6]})
+
+    links = internal_links(body, cfg.get("_site_url", ""))
+    cap = cfg.get("max_internal_links")
+    if isinstance(cap, int):
+        seen: dict[str, int] = {}
+        for _, path in links:
+            seen[path] = seen.get(path, 0) + 1
+        repeated = sorted(p for p, n in seen.items() if n > 1)
+        if len(links) > cap or repeated:
+            msg = f"{len(links)} internal links (limit {cap}"
+            msg += f"; linked more than once: {', '.join(repeated)})" if repeated else ")"
+            violations.append({"rule": "internal_links",
+                               "excerpt": msg + "; keep the most useful links, each page once, and turn "
+                                                "the rest back into plain text",
+                               "sentences": [f"[{a}] -> {p}" for a, p in links][:20]})
+
     return {"passed": not violations, "violations": violations,
-            "exact_keyword_uses": kw_uses, "near_duplicate_pairs": len(dups)}
+            "exact_keyword_uses": kw_uses, "near_duplicate_pairs": len(dups),
+            "hedge_sentences": len(hedges), "keyword_openers": len(openers),
+            "internal_links": len(links)}
 
 
 def project_config(project_slug: str | None) -> dict[str, Any]:
@@ -113,9 +222,13 @@ def project_config(project_slug: str | None) -> dict[str, Any]:
         return {}
     p = PLUGIN_ROOT / "projects" / project_slug / "business-context.json"
     try:
-        return (json.loads(p.read_text(encoding="utf-8")).get("editorial") or {})
+        ctx = json.loads(p.read_text(encoding="utf-8"))
     except (OSError, ValueError):
         return {}
+    cfg = dict(ctx.get("editorial") or {})
+    if cfg:
+        cfg["_site_url"] = ctx.get("site_url") or ""
+    return cfg
 
 
 def run(task_id: str) -> dict[str, Any]:
@@ -133,11 +246,14 @@ def repair_brief(res: dict[str, Any]) -> str:
     lines = ["The project's editorial check failed. Fix each item in draft.md with the smallest edit:"]
     for v in res.get("violations", []):
         lines.append(f"- [{v['rule']}] {v['excerpt']}")
+        for line in v.get("sentences", [])[:12]:
+            lines.append(f"    - \"{line[:180]}\"")
         for a, b in v.get("pairs", [])[:5]:
             lines.append(f"    repeated: \"{a[:160]}\" / \"{b[:160]}\" -> keep the better one, cut or merge the other")
     lines.append("Rules: a banned H2 is replaced by a factory-perspective section (rename and rewrite it, "
                  "e.g. 'What to send us for an accurate quote'); disclaimers about the company are deleted, "
-                 "not reworded; extra exact keyword uses become natural variants. Keep claim markers, image "
+                 "not reworded; extra exact keyword uses become natural variants; repeated caveats are cut to one, kept in the "
+                 "section where they matter; removed internal links keep their words as plain text. Keep claim markers, image "
                  "slots, the CTA module and References intact.")
     return "\n".join(lines)
 

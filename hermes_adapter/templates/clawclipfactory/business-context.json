@@ -127,7 +127,7 @@
     "inline_toc": false
   },
   "editorial": {
-    "_doc": "Enforced by hermes_adapter/editorial_check.py after review; regexes are case-insensitive.",
+    "_doc": "Enforced by hermes_adapter/editorial_check.py after the internal linker and before review (regexes case-insensitive). paa_topic_filter / paa_generic_terms are read by scripts/lint/paa_alignment_check.py.",
     "banned_patterns": [
       "not independent (product )?testing",
       "no (individual )?author credentials",
@@ -142,7 +142,8 @@
       "\\bour (certificates?|certifications?|test reports?)\\b",
       "\\b(we|our factory) (export|ship)s? to \\d+",
       "\\b\\d+\\+? years of (manufacturing |export )?experience\\b",
-      "\\bclients? in \\d+ countries\\b"
+      "\\bclients? in \\d+ countries\\b",
+      "\\bsee (our|the) [^.]{0,60}\\babove\\b"
     ],
     "banned_h2_patterns": [
       "delay (your )?purchas",
@@ -152,6 +153,29 @@
     ],
     "max_exact_keyword_uses": 6,
     "max_near_duplicate_sentences": 3,
+    "max_hedge_sentences": 5,
+    "max_keyword_openers": 1,
+    "max_internal_links": 6,
+    "paa_topic_filter": true,
+    "paa_generic_terms": [
+      "claw",
+      "clip",
+      "clips",
+      "hair",
+      "wholesale",
+      "bulk",
+      "custom",
+      "manufacturer",
+      "manufacturers",
+      "factory",
+      "supplier",
+      "suppliers",
+      "buy",
+      "best",
+      "guide",
+      "order",
+      "orders"
+    ],
     "skip_stages": [
       "citation-capsule-builder"
     ]
