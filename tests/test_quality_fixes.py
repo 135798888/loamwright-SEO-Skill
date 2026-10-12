@@ -469,3 +469,29 @@ def test_designer_is_pointed_at_vendored_prompt_craft_that_exists(project):
             part = part.strip()
             if part.endswith(".md") and " " not in part:
                 assert (ref / part).exists(), part
+
+
+def test_table_chart_tolerates_mismatched_rows_and_widths():
+    """2026-10-11: one malformed table spec (IndexError) failed a whole article."""
+    from scripts.build import data_chart_png as d
+    img = d.render_table({"title": "Matte vs glossy", "columns": ["Finish", "Look"],
+                          "col_frac": [0.4, 0.3, 0.3],
+                          "rows": [["Matte", "Soft", "extra cell"], ["Glossy"]]})
+    assert img.size[0] == d.CANVAS
+
+
+def test_unrenderable_chart_spec_is_repaired_then_rerendered(task, monkeypatch):
+    from hermes_adapter import driver as drv
+    from tests.test_hermes_adapter import _cfg
+    tid, ws = task
+    (ws / "chart-render-result.json").write_text(json.dumps(
+        {"success": False, "errors": [{"slot_id": "inline-5", "error": "IndexError: list index out of range"}]}))
+    fixed: list[Any] = []
+    monkeypatch.setattr(drv.Driver, "_repair_chart_specs", lambda self, st, errs: fixed.append((st, errs)))
+    monkeypatch.setattr(drv.time, "sleep", lambda s: None)
+    seq = iter([{"action": "ERROR", "stage": "chart-render",
+                 "detail": "BASH stage 'chart-render' ran but verify failed: ['chart-render-result.json']"},
+                {"action": "COMPLETE"}])
+    rep = drv.Driver(_cfg(), tid, pipeline_drive=lambda *a, **k: next(seq)).run()
+    assert rep.status == "complete"
+    assert fixed and fixed[0][0] == "chart-render" and fixed[0][1][0]["slot_id"] == "inline-5"

@@ -467,7 +467,18 @@ def render_table(spec, W=CANVAS, H=CANVAS):
     img=Image.new("RGB",(W,H),BG); d=ImageDraw.Draw(img)
     top=_header(d, W, spec["title"], spec.get("subtitle",""))
     cols=spec["columns"]; rows=spec["rows"]  # rows: list of lists; optional status per row via spec["status_col"]
-    widths=spec.get("col_frac",[1/len(cols)]*len(cols))
+    # Tolerate the two malformations designers produce (2026-10-11 IndexError killed a
+    # whole run): rows with more/fewer cells than columns, and a col_frac list whose
+    # length does not match the columns. Pad/trim rows; fall back to equal widths.
+    if not cols:
+        raise ValueError("table chart_spec has no 'columns'")
+    rows=[(list(r) + [""] * len(cols))[:len(cols)] if isinstance(r, (list, tuple)) else [str(r)] + [""] * (len(cols) - 1)
+          for r in rows]
+    widths=spec.get("col_frac")
+    if not (isinstance(widths, list) and len(widths) == len(cols)
+            and all(isinstance(w, (int, float)) and w > 0 for w in widths)):
+        widths=[1/len(cols)]*len(cols)
+    total=sum(widths); widths=[w/total for w in widths]
     status_col=spec.get("status_col", -1)
     left=px(46); right=W-px(46); tw=right-left
     xb=[left]
