@@ -85,6 +85,9 @@ def _error_detail(r: dict[str, Any]) -> str:
     return "\n".join(parts)
 
 
+_CHART_STAGES = {"chart-render": "chart-render-result.json",
+                 "chart-rerender": "chart-rerender-result.json"}
+
 _IMAGE_JOIN = "image-pipeline-join"
 _IMAGE_FORK_TIMEOUT_S = 45 * 60
 
@@ -572,6 +575,26 @@ class Driver:
                                      "score and the specific problems to fix)", "")
         return False
 
+    def _repair_chart_specs(self, stage: str, errors: list[Any]) -> None:
+        ws_rel = f"memory/workspace/{self.task_id}"
+        lines = "\n".join(f"- slot {e.get('slot_id')}: {e.get('error')}" for e in errors if isinstance(e, dict))
+        prompt = f"""The chart renderer could not draw these chart slots:
+{lines}
+
+Fix ONLY those slots' `chart_spec` in {ws_rel}/image-prompts.json so they render. The spec
+shapes are documented in agents/image-prompt-designer.md (vbar, grouped_vbar, rangebar,
+table, flow). Typical causes: a table row with a different number of cells than `columns`,
+`col_frac` not matching the columns, grouped_vbar `values` not matching `series`, a flow
+with fewer than 2 or more than 8 steps, a missing `title`. Keep every number and label that
+is already there; change structure, not facts. Do not touch other slots or any other file.
+You may check with: python -m scripts.build.render_data_charts --task-id {self.task_id} --json"""
+        self.event("repair", stage=stage, round=self.gate_repairs[stage], gate=lines[:500])
+        res = run_agent(cfg=self.cfg, client=self.client, role="repair", stage=f"repair:{stage}",
+                        system_prompt="You fix chart specifications so a deterministic renderer can draw them.",
+                        user_prompt=prompt, tools=REPAIR_TOOLS, max_turns=30,
+                        task_id=self.task_id, project_slug=self.slug)
+        self.event("repair_done", stage=stage, turns=res.turns)
+
     def _generic_repair(self, stage: str, gate: str, tail: str) -> None:
         ws_rel = f"memory/workspace/{self.task_id}"
         prompt = f"""A quality gate failed. Repair the article SURGICALLY so the gate passes
@@ -664,6 +687,16 @@ Rules:
             self.retry_notes[stage] = detail[:2000]
             self.event("llm_retry", stage=stage, detail=detail[:500])
             return True  # runner hands the stage back as DISPATCH_LLM
+        # A chart spec the renderer could not draw: re-running the same spec fails the
+        # same way (2026-10-11, IndexError on one slot ended the article). Have an agent
+        # fix that slot's chart_spec, then let the runner re-render.
+        if stage in _CHART_STAGES:
+            res = self._read_json(_CHART_STAGES[stage]) or {}
+            errs = res.get("errors") or []
+            if errs and self.gate_repairs[stage] < self.cfg.repair_rounds:
+                self.gate_repairs[stage] += 1
+                self._repair_chart_specs(stage, errs)
+                return True
         # BASH stage crashed: retry once (transient network/API), then give up with detail.
         self.bash_errors[stage] += 1
         if self.bash_errors[stage] > 1:
