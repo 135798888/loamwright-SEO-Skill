@@ -57,7 +57,8 @@ def related_posts(keyword: str, posts: list[dict[str, Any]], threshold: float = 
         title = _title(p)
         score = overlap(keyword, title, generic)
         if score >= threshold:
-            out.append({"title": html.unescape(re.sub(r"<[^>]+>", "", title)), "url": p.get("link"),
+            out.append({"id": p.get("id"),
+                        "title": html.unescape(re.sub(r"<[^>]+>", "", title)), "url": p.get("link"),
                         "status": p.get("status"), "overlap": round(score, 2)})
     return sorted(out, key=lambda x: -x["overlap"])
 
@@ -77,16 +78,21 @@ def fetch_posts(project_slug: str) -> list[dict[str, Any]]:
     return posts
 
 
-def write_for_task(workspace: Path, keyword: str, project_slug: str) -> list[dict[str, Any]]:
+def write_for_task(workspace: Path, keyword: str, project_slug: str,
+                   exclude_ids: set[int] | None = None) -> list[dict[str, Any]]:
+    """exclude_ids: posts this run rewrites (run_article --rewrite-of). A weaker draft for the
+    same keyword would otherwise be the strongest overlap and push the writer off-topic."""
+    skip = exclude_ids or set()
     try:
-        rel = related_posts(keyword, fetch_posts(project_slug))
+        rel = related_posts(keyword, [p for p in fetch_posts(project_slug) if p.get("id") not in skip])
     except Exception as e:  # noqa: BLE001 — never block an article on this lookup
         rel = []
         (workspace / "existing-posts.json").write_text(
             json.dumps({"error": f"{type(e).__name__}: {e}", "related": []}, indent=2), encoding="utf-8")
         return rel
     (workspace / "existing-posts.json").write_text(
-        json.dumps({"keyword": keyword, "related": rel}, ensure_ascii=False, indent=2), encoding="utf-8")
+        json.dumps({"keyword": keyword, "related": rel, "rewrite_of": sorted(skip)},
+                   ensure_ascii=False, indent=2), encoding="utf-8")
     return rel
 
 
