@@ -117,6 +117,43 @@ def _load_paa(ws: Path) -> list[str]:
     return paa
 
 
+def _topic_filter(ws: Path) -> tuple[list[str], set[str]] | None:
+    """Project opt-in (business-context.json :: editorial.paa_topic_filter): count only the
+    PAA questions that share a distinctive term with the primary keyword.
+
+    A SERP's PAA box is often generic. For "matte vs glossy claw clips" (clawclipfactory,
+    post 318, 2026-10-12) it held "What is a claw clip for hair?" and "Are metal or plastic
+    claw clips better?"; the 60% contract then forced three off-topic consumer questions into
+    a wholesale buyer's FAQ. Returns (generic_terms, distinctive_terms) or None when off.
+    """
+    try:
+        state = json.loads((ws / "state.json").read_text(encoding="utf-8"))
+        slug = state.get("project_slug")
+        keyword = (state.get("brief") or {}).get("primary_keyword") or state.get("primary_keyword") or ""
+        ctx = json.loads((PLUGIN_ROOT / "projects" / str(slug) / "business-context.json")
+                         .read_text(encoding="utf-8"))
+    except (OSError, ValueError, TypeError):
+        return None
+    ed = ctx.get("editorial") or {}
+    if not ed.get("paa_topic_filter"):
+        return None
+    generic = {str(t).lower() for t in ed.get("paa_generic_terms") or []}
+    distinctive = {t for t in _normalize_tokens(keyword) if t not in generic}
+    return sorted(generic), distinctive
+
+
+def _stem_match(a: str, b: str) -> bool:
+    if a == b:
+        return True
+    n = min(len(a), len(b), 5)
+    return n >= 4 and a[:n] == b[:n]
+
+
+def paa_on_topic(question: str, distinctive: set[str]) -> bool:
+    toks = _normalize_tokens(question)
+    return any(_stem_match(t, d) for t in toks for d in distinctive)
+
+
 def check(task_id: str) -> dict[str, Any]:
     ws = PLUGIN_ROOT / "memory" / "workspace" / task_id
     result: dict[str, Any] = {
@@ -141,6 +178,16 @@ def check(task_id: str) -> dict[str, Any]:
 
     paa = _load_paa(ws)
     result["paa_count"] = len(paa)
+    topic = _topic_filter(ws)
+    if topic is not None and topic[1]:
+        kept = [p for p in paa if paa_on_topic(p, topic[1])]
+        result["paa_off_topic"] = [p for p in paa if p not in kept]
+        if result["paa_off_topic"]:
+            result["notes"].append(
+                f"project paa_topic_filter: {len(result['paa_off_topic'])} PAA questions share no "
+                f"term with {sorted(topic[1])} and are not demanded in the FAQ")
+        paa = kept
+        result["paa_count"] = len(paa)
 
     faq = _extract_faq_section(body)
     if faq is None:

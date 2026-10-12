@@ -19,6 +19,11 @@ them knowing more AND seeing why talking to this factory is a sensible next step
   price, years or headcount unless listed). The "not_claimable" item says what we must never
   claim (export history, countries served, certifications, test reports). If a fact is missing, write around it; never say
   "we cannot confirm" about ourselves.
+- State well-sourced industry facts plainly, without wrapping each one in "this does not prove"
+  qualifiers. Give the buyer the trade's own vocabulary and concrete options for the topic, each
+  with a real source (for mold finishes, for example: SPI polish grades and VDI 3400 / MT texture
+  numbers; for materials: the resin names and what changes between them). A guide whose only
+  advice is "confirm with the factory" or "approve a physical sample" teaches the buyer nothing.
 - Industry facts (Incoterms, material properties, testing standards) need real external sources.
   Aim for 6-10 authoritative references (standards bodies, government trade sites, material
   suppliers, peer-reviewed or trade publications). Never cite competitor factories.
@@ -34,6 +39,11 @@ them knowing more AND seeing why talking to this factory is a sensible next step
   natural variants (custom claw clips, wholesale orders, bulk claw clips). This project rule
   overrides any `primary_keyword_density_target` in a section spec: aim for 0 to 1 exact uses
   per section; the whole article must not exceed the limit checked after review.
+- The same caveat over and over. Say once, in the section where it matters, what a label or a
+  test does not show, then tell the buyer what to do instead. More than 5 sentences of the
+  "X does not prove / guarantee / establish Y" kind fail the editorial check.
+- Sentences that open with the keyword as a label ("For matte vs glossy claw clips, ...").
+  Start with the point.
 - The same advice twice. Each section adds something new. No robotic summary lines such as
   "X has 5 fields" or "Y has 2 decisions" at the top of sections.
 - An "Abstract" section or an in-article table of contents (the theme has a sidebar TOC).
@@ -43,7 +53,15 @@ them knowing more AND seeing why talking to this factory is a sensible next step
 - At least one comparison or specification table and, where data allows, one chart.
 - A section showing how WE do it (our sample route, our QC checks, our tooling route) with the
   real numbers from the facts.
-- FAQ answers use our facts first ("Our standard MOQ is 1,000 pieces per style").
+- FAQ questions are what a wholesale buyer asks about THIS topic. Skip generic consumer PAA
+  questions ("What is a claw clip for hair?", "Do hair clips cause breakage?") even when they
+  appear in research; for this project only on-topic PAA questions count toward the PAA check.
+- FAQ answers use our facts first ("Our standard MOQ is 1,000 pieces per style") and stand on
+  their own in 2-4 sentences. Never answer with "see ... above".
+- Internal links: this project overrides the generic 10-15 link target. Add 3-6 in-text links,
+  each to a different page, only where the reader would want that page next. The anchor names
+  what the target page covers ("our sample approval checklist"), never a random noun from the
+  sentence ("final resin", "ABS and PC"). The CTA modules are not counted.
 - End with a short conclusion and the configured call to action. Keep the CTA module untouched.
 - CTA link text is a short button label (at most 5 words, e.g. "Request a quote"), not a sentence.
 
@@ -57,6 +75,10 @@ Order of preference for every image slot:
    claw clip (AI draws the hinge, spring and teeth wrong); a clip may appear only as a small,
    simple icon.
 - Aim for at least two diagrams/charts per article; they carry real information.
+- A "flow" chart is only for steps that happen in order. Parallel options or criteria are a
+  table or a short list, not a flow; a process (sample route, tooling route) is a flow, not a
+  table. Chart titles and subtitles carry information, never a caveat ("not a test sequence or
+  measured results"). A chart does not repeat the paragraph beside it step for step.
 - A comparison that is already a table in the text is NOT also drawn as a "table" chart:
   readers saw the same table twice. Use image slots for flows, bar or range charts instead.
 - The cover must show the article's topic at a glance (for a sample-approval article: a desk
