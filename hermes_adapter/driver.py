@@ -304,9 +304,23 @@ class Driver:
         self.event("project_skip", stage=stage, result=str(res)[:300])
         return True
 
+    def _refresh_signature(self) -> None:
+        """Re-render the generated signature line before any judge reads the draft. It is
+        deterministic output; a repair agent should never be asked to fix it."""
+        from scripts.build.finalize_refs_signature import refresh_signature
+        draft = self.ws / "draft.md"
+        if not draft.exists():
+            return
+        text = draft.read_text(encoding="utf-8")
+        new = refresh_signature(text, self.slug or "")
+        if new != text:
+            draft.write_text(new, encoding="utf-8")
+            self.event("signature_refreshed")
+
     def _editorial(self) -> str | None:
         """Run the project's editorial check; repair and re-check up to repair_rounds."""
         from hermes_adapter import editorial_check as ec
+        self._refresh_signature()
         if not ec.project_config(self.slug):
             return None
         res: dict[str, Any] = {}

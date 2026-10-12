@@ -157,6 +157,42 @@ def _signature_spec(project_slug: str) -> tuple[str, str, str]:
     return author, contact_url, cta_clause
 
 
+def canonical_signature(project_slug: str) -> str:
+    """The signature this project should carry: its template, else one built from
+    {author, contact_url, cta_clause}.
+
+    cta_clause may be a noun phrase ("tailored guidance" -> "For tailored guidance, contact
+    our team") or a whole sentence. clawclipfactory's is a sentence ("Need custom claw clips?
+    Send us your design ... for a quote."), and the noun-phrase frame produced "For Need custom
+    claw clips? ... for a quote., contact our team" (task 20261012_c1ee622e; the second
+    opinion failed it twice and the repair agent could not fix a generated line)."""
+    tpl = _signature_template(project_slug)
+    if tpl is not None:
+        return tpl
+    author, contact_url, cta_clause = _signature_spec(project_slug)
+    month_year = datetime.now(timezone.utc).strftime("%B %Y")
+    clause = cta_clause.strip()
+    if clause[-1:] in ".?!":
+        tail = f"{clause} [Contact our team]({contact_url})."
+    else:
+        tail = f"For {clause}, [contact our team]({contact_url})."
+    return f"*Last reviewed and updated: {month_year}. Author: {author}. {tail}*"
+
+
+def refresh_signature(markdown: str, project_slug: str) -> str:
+    """Replace every markdown signature line with the canonical one (nothing else changes).
+    Used before the pre-review checks so a malformed signature never reaches a judge."""
+    sig = canonical_signature(project_slug)
+    lines = markdown.split("\n")
+    hit = False
+    for i, ln in enumerate(lines):
+        st = ln.strip()
+        if st.startswith("*Last reviewed and updated:") and st.endswith("*"):
+            lines[i] = sig
+            hit = True
+    return "\n".join(lines) if hit else markdown
+
+
 def finalize(task_id: str, project_slug: str = "") -> dict:
     ws = _ws(task_id)
     draft_p = ws / "draft.md"
@@ -226,17 +262,10 @@ def finalize(task_id: str, project_slug: str = "") -> dict:
 
     sig_relocated = existing_sig is not None
     sig_added = False
-    sig_text = existing_sig
-    if sig_text is None:
-        sig_text = _signature_template(project_slug)
-        if sig_text is None:
-            author, contact_url, cta_clause = _signature_spec(project_slug)
-            month_year = datetime.now(timezone.utc).strftime("%B %Y")
-            sig_text = (
-                f"*Last reviewed and updated: {month_year}. Author: {author}. "
-                f"For {cta_clause}, [contact our team]({contact_url}).*"
-            )
-        sig_added = True
+    # The signature is generated, never the writer's: writers are told not to author it,
+    # and one that slips in (or an earlier malformed render) is replaced, not preserved.
+    sig_text = canonical_signature(project_slug)
+    sig_added = sig_text != existing_sig
     draft = draft.rstrip() + f"\n\n---\n\n{sig_text}\n"
 
     draft_p.write_text(draft, encoding="utf-8")
