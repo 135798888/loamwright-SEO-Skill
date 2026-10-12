@@ -121,6 +121,10 @@ def main() -> int:
     ap.add_argument("--queue", type=Path,
                     help="take ONE keyword from the top of this file (for cron/Hermes schedules); "
                          "it is moved to <file>.done with the result")
+    ap.add_argument("--rewrite-of", type=int, action="append", default=[], metavar="POST_ID",
+                    help="this run rewrites that existing post (e.g. a weaker draft for the same "
+                         "keyword); it is left out of the overlap brief so the writer does not "
+                         "steer away from the topic. Repeatable.")
     ap.add_argument("--check", action="store_true", help="validate llm.yaml + endpoint and exit")
     ap.add_argument("--no-notify", action="store_true")
     ap.add_argument("--notify-test", action="store_true",
@@ -211,7 +215,8 @@ def _run(args, cfg, ap) -> int:
                 locale=args.locale, word_count=args.word_count,
                 image_count=args.image_count, template_id=args.template))
             from hermes_adapter.topic_overlap import write_for_task
-            rel = write_for_task(_ROOT / "memory" / "workspace" / task_ids[-1], kw, args.project)
+            rel = write_for_task(_ROOT / "memory" / "workspace" / task_ids[-1], kw, args.project,
+                                 exclude_ids=set(args.rewrite_of))
             if rel:
                 print(f"[overlap] '{kw}' overlaps {len(rel)} existing post(s); writers will take a "
                       f"different angle: " + "; ".join(r["title"] for r in rel[:5]),

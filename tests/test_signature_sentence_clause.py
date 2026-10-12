@@ -82,3 +82,45 @@ def test_driver_refreshes_the_signature_before_any_judge_reads_it(task, monkeypa
     assert rep.status == "complete"
     assert seen and "For Need" not in seen[0] and "[Contact our team]" in seen[0]
     assert json.loads((ws / "editorial-check.json").read_text())["passed"] is True
+
+
+# ── rewriting a weaker draft for the same keyword (post 326, 2026-10-12) ──
+
+def test_rewrite_of_keeps_the_old_draft_out_of_the_overlap_brief(project, monkeypatch):
+    """Seam: run_article._run with --rewrite-of 326. Without it, draft 326 ('Claw Clip Sizes')
+    is the strongest overlap and the brief tells the writer to take a different angle, which
+    is the opposite of a rewrite."""
+    import sys
+    from types import SimpleNamespace
+    from hermes_adapter import run_article as ra
+    from hermes_adapter import topic_overlap as to
+    from hermes_adapter.agent import _env_preamble
+    posts = [{"id": 326, "title": {"rendered": "Claw Clip Sizes: How to Measure and Specify Bulk Orders"},
+              "link": "https://clawclipfactory.com/?p=326", "status": "draft"},
+             {"id": 43, "title": {"rendered": "ABS vs PC Hair Claw Clips: A Practical B2B Sourcing Guide"},
+              "link": "https://clawclipfactory.com/abs-vs-pc/", "status": "publish"},
+             {"id": 154, "title": {"rendered": "Hair Claw Clip Sample Approval Checklist for B2B Buyers"},
+              "link": "https://clawclipfactory.com/sample/", "status": "publish"}]
+    monkeypatch.setattr(to, "fetch_posts", lambda slug: posts)
+    seen: list[str] = []
+    monkeypatch.setattr(ra, "drive_task", lambda cfg, tid, on_event=None: (
+        seen.append(tid), SimpleNamespace(as_dict=lambda: {"status": "complete", "finished_at": "x"}))[1])
+    cfg = SimpleNamespace(telegram_bot_token=None, telegram_chat_id=None)
+
+    def run(extra):
+        monkeypatch.setattr(sys, "argv", ["run_article", "--project", project, "--keyword",
+                                          "claw clip sizes", "--no-notify", *extra])
+        ap = ra.argparse.ArgumentParser()
+        args = SimpleNamespace(queue=None, resume=None, project=project, keyword="claw clip sizes",
+                               keywords_file=None, secondary="", locale="en-US", word_count=None,
+                               image_count=2, template=None, no_notify=True,
+                               rewrite_of=[int(x) for x in extra[1:2]] if extra else [])
+        assert ra._run(args, cfg, ap) == 0
+        tid = seen[-1]
+        try:
+            return _env_preamble(tid, project, ["Read"])
+        finally:
+            shutil.rmtree(WS_ROOT / tid, ignore_errors=True)
+
+    assert "Claw Clip Sizes: How to Measure" in run([])
+    assert "Claw Clip Sizes: How to Measure" not in run(["--rewrite-of", "326"])
