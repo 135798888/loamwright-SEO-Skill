@@ -74,6 +74,33 @@ def environment_error(r: dict[str, Any]) -> str | None:
     return None
 
 
+_INFRA_RE = re.compile(r"cost guard|daily (total |cost )?(cap|budget|limit)|\bblocked by\b.*budget|"
+                       r"rate.?limit|\b429\b", re.I)
+
+
+def verifier_blocked(ws: Path, stage: str) -> str | None:
+    """A content-gated verdict that is really "I could not run my tools" (2026-10-12, task
+    20261012_a7fc4ce4: the fact-checker's Bash calls hit the $40 daily cost cap and a
+    WebFetch got HTTP 429, so it wrote FIX_REQUIRED; three repair rounds edited a draft
+    that had nothing wrong with it, and every round spent more of the exhausted budget).
+    Returns the blocking issue's description, or None for a genuine content verdict."""
+    name = _CONTENT_GATED_LLM.get(stage)
+    if not name:
+        return None
+    try:
+        data = json.loads((ws / name).read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        return None
+    for issue in data.get("issues") or []:
+        if not isinstance(issue, dict):
+            continue
+        kind = str(issue.get("type") or "")
+        desc = str(issue.get("description") or "")
+        if "infrastructure" in kind.lower() or _INFRA_RE.search(desc):
+            return desc[:500] or kind
+    return None
+
+
 def _error_detail(r: dict[str, Any]) -> str:
     """The runner's one-line verdict plus what the command itself printed — a BASH
     stage's real reason (e.g. the publisher's JSON `error`) is only in its output."""
@@ -257,6 +284,15 @@ class Driver:
                     continue
 
                 if action == "ERROR":
+                    blocked = verifier_blocked(self.ws, stage)
+                    if blocked:
+                        self.event("verifier_blocked", stage=stage, detail=blocked[:300])
+                        return self._finish(
+                            "failed",
+                            f"{stage} could not run its checks (not a content problem, so no "
+                            f"repair was attempted): {blocked} -- resume this task after the "
+                            "daily budget resets or the rate limit clears (or raise "
+                            "cost_limits.daily_total_usd in ~/.xuanran-seo/config.yaml).", stage)
                     if not self._handle_error(r):
                         return self._finish("failed", _error_detail(r), stage)
                     continue

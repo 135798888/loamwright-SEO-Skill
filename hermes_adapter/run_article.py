@@ -170,8 +170,24 @@ def _pop_queue(path: Path) -> str | None:
     return None
 
 
+def _daily_budget_left() -> tuple[float, float] | None:
+    """(used today, daily cap) from the shared cost ledger, or None if unreadable."""
+    try:
+        from scripts._core import cost_ledger
+        used = float(cost_ledger.summary("day")["total_usd"])
+        cap = float(cost_ledger._load_limits().get("daily_total_usd", 100))
+        return used, cap
+    except Exception:  # noqa: BLE001 — informational
+        return None
+
+
 def _preflight(project: str, image_count: int | None) -> str | None:
     """Problems that would only surface hours into a run, checked before any spend."""
+    budget = _daily_budget_left()
+    if budget and budget[0] >= budget[1]:
+        return (f"daily cost cap reached: ${budget[0]:.2f} used of ${budget[1]:.2f} "
+                "(cost_limits.daily_total_usd in ~/.xuanran-seo/config.yaml). The pipeline's own "
+                "tools would be refused mid-article; start after the daily reset or raise the cap.")
     from scripts.openai.own_library_pipeline import library_policy, load_library
     if library_policy(project) and image_count != 0 and not load_library(project)[0]:
         print(f"[images] {project}: photo library has no approved photos yet; photo slots use the "
@@ -189,6 +205,12 @@ def _run(args, cfg, ap) -> int:
             return 0
         args.keyword = queue_kw
     if args.resume:
+        budget = _daily_budget_left()
+        if budget and budget[0] >= budget[1]:
+            print(json.dumps({"ok": False, "error": f"daily cost cap reached: ${budget[0]:.2f} used of "
+                              f"${budget[1]:.2f}; resume after the daily reset or raise "
+                              "cost_limits.daily_total_usd"}, ensure_ascii=False))
+            return 2
         task_ids.append(args.resume)
     else:
         if not args.project:
