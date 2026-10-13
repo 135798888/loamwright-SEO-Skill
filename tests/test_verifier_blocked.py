@@ -68,3 +68,14 @@ def test_new_run_refuses_to_start_over_the_daily_cap(monkeypatch):
     assert "daily cost cap reached" in ra._preflight("clawclipfactory", 2)
     monkeypatch.setattr(ra, "_daily_budget_left", lambda: (12.0, 40.0))
     assert ra._preflight("clawclipfactory", 2) is None
+
+
+def test_both_fact_checker_layers_carry_the_tavily_fallback():
+    """Rule 11: the dispatch prompt and the agent definition are loaded on different paths.
+    Task 20261012_a7fc4ce4's sources (Shopify retailers: 429; ISO: Cloudflare 403) never
+    load from the server, so without this fallback the article can never pass."""
+    from scripts.pipeline import orchestrator as orch
+    stage = next(s for s in orch.STAGES if s.name == "fact-check-and-citation")
+    agent = (PLUGIN_ROOT / "agents" / "fact-checker.md").read_text(encoding="utf-8")
+    for text in (stage.dispatch_prompt, agent):
+        assert "scripts.fetch.tavily_extract" in text and "bot-blocked" in text
