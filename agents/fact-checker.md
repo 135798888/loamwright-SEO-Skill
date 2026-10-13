@@ -258,6 +258,22 @@ Three rules, each load-bearing:
 3. **A ref you could NOT verify anywhere gets `url_verified: false`** — never leave
    a dead source in the set with a hopeful status code.
 
+### Pages that block THIS server (429 / Cloudflare) — verify through Tavily (2026-10-13)
+
+Storefront pages (Shopify retailers return HTTP 429 to datacenter IPs) and some standards
+bodies (ISO returns a Cloudflare 403 challenge) refuse this server's WebFetch even though they
+load fine for readers. That is a property of our network, not of the source. For such a
+page, fetch it from Tavily's servers instead:
+
+```bash
+python -m scripts.fetch.tavily_extract "<url>" --json
+```
+
+If the extracted text supports the claim, record
+`{"url_verified": true, "resolved_status": "bot-blocked", "resolution_note": "HTTP 429/403 to this server; content verified via Tavily extract <date>."}`.
+Only when Tavily ALSO cannot retrieve the page (or the text does not support the claim)
+is the source unverified. A block on this server alone is never a reason for FIX_REQUIRED.
+
 ## Failure modes
 
 | Failure | Action |
