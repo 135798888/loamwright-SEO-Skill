@@ -25,6 +25,7 @@ import argparse
 import json
 import os
 import sys
+from datetime import datetime, timezone
 from pathlib import Path
 
 # Run from anywhere: make the plugin root importable and the cwd.
@@ -181,6 +182,36 @@ def _daily_budget_left() -> tuple[float, float] | None:
         return None
 
 
+def next_queue_keyword(path: Path, project: str | None) -> tuple[str | None, list[tuple[str, str]]]:
+    """Pop keywords until one is not already covered by a post on the site.
+
+    "Covered" means every distinctive word of the keyword (words that are not common to
+    half the site's titles, such as "claw" and "clip" here) appears in one existing post's
+    title: "claw clip sizes" is covered by "Claw Clip Sizes: mm and Inch Chart ...", while
+    "custom logo claw clips" only half-overlaps "Custom Hair Claw Clip Tooling ..." and is
+    written with a different angle instead. Skipped keywords go to <queue>.done so nothing
+    disappears silently. If the site cannot be read, nothing is skipped."""
+    from hermes_adapter.topic_overlap import fetch_posts, related_posts
+    try:
+        posts = fetch_posts(project) if project else []
+    except Exception as e:  # noqa: BLE001 — the per-task overlap brief still runs
+        print(f"[queue] could not list existing posts ({type(e).__name__}); no duplicate skip",
+              file=sys.stderr, flush=True)
+        posts = []
+    skipped: list[tuple[str, str]] = []
+    while True:
+        kw = _pop_queue(path)
+        if not kw:
+            return None, skipped
+        covered = [r for r in related_posts(kw, posts) if r["overlap"] >= 1.0] if posts else []
+        if not covered:
+            return kw, skipped
+        skipped.append((kw, covered[0]["title"]))
+        with Path(str(path) + ".done").open("a", encoding="utf-8") as f:
+            f.write(f"{datetime.now(timezone.utc).isoformat()[:19]}\tskipped_duplicate\t-\t{kw}"
+                    f"\t{covered[0]['title']}\n")
+
+
 def _preflight(project: str, image_count: int | None) -> str | None:
     """Problems that would only surface hours into a run, checked before any spend."""
     budget = _daily_budget_left()
@@ -199,9 +230,21 @@ def _run(args, cfg, ap) -> int:
     task_ids: list[str] = []
     queue_kw: str | None = None
     if args.queue:
-        queue_kw = _pop_queue(args.queue)
+        budget = _daily_budget_left()
+        if budget and budget[0] >= budget[1]:
+            # Checked BEFORE popping: a refused run must not consume the keyword.
+            print(json.dumps({"ok": False, "error": f"daily cost cap reached: ${budget[0]:.2f} used of "
+                              f"${budget[1]:.2f}; the queue was left untouched"}, ensure_ascii=False))
+            return 2
+        queue_kw, skipped = next_queue_keyword(args.queue, args.project)
+        for kw, title in skipped:
+            print(f"[queue] skipped '{kw}': already covered by '{title}'", file=sys.stderr, flush=True)
+        if skipped and not args.no_notify:
+            telegram(cfg, "⏭ 关键词队列跳过了已有文章覆盖的词：\n" + "\n".join(
+                f"- {kw} → {title}" for kw, title in skipped))
         if not queue_kw:
-            print(json.dumps({"ok": True, "articles": [], "note": f"queue {args.queue} is empty"}))
+            print(json.dumps({"ok": True, "articles": [], "skipped": [k for k, _ in skipped],
+                              "note": f"queue {args.queue} is empty"}, ensure_ascii=False))
             return 0
         args.keyword = queue_kw
     if args.resume:
